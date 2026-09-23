@@ -1,0 +1,6 @@
+const DB="forte-cargas-files-v51",STORE="files";
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE)};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+export async function putFile(id,file){const db=await openDB();return new Promise((res,rej)=>{const tx=db.transaction(STORE,"readwrite");tx.objectStore(STORE).put(file,id);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
+export async function getFile(id){const db=await openDB();return new Promise((res,rej)=>{const r=db.transaction(STORE,"readonly").objectStore(STORE).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+export async function openFile(id,print=false){const file=await getFile(id);if(!file)throw new Error("ARQUIVO NÃO ENCONTRADO");const url=URL.createObjectURL(file);const w=window.open(url,"_blank");if(print&&w){setTimeout(()=>{try{w.print()}catch{}},900)}setTimeout(()=>URL.revokeObjectURL(url),60000)}
+export async function downloadFile(id,name){const file=await getFile(id);if(!file)throw new Error("ARQUIVO NÃO ENCONTRADO");const url=URL.createObjectURL(file);const a=document.createElement("a");a.href=url;a.download=name||file.name||"documento";a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}

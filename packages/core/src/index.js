@@ -1,0 +1,8 @@
+export const formatDateBR=(value)=>{if(!value)return "";const s=String(value).slice(0,10);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(value)};
+export const todayISO=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+export const PALLETS=["COM PALLETS","SEM PALLETS","LEVA PALLETS"];
+export const FRETES=["FOB","CIF"];
+export function palletText(v){return v==="LEVA PALLETS"?"LEVA PALLETS":v==="COM PALLETS"?"COM PALLETS (ENVIAR O PEDIDO PARA LIBERAÇÃO DE PALLETS)":"SEM PALLETS"}
+export function validateBrands(vendas){const marcas=[...new Set(vendas.map(v=>v.marca).filter(Boolean))];return{ok:marcas.length<=1,marcas}}
+export function validateCapacity(total,alvo,max){total=Number(total||0);alvo=Number(alvo||0);max=Number(max||alvo||0);const diff=total-alvo;if(!alvo)return{status:"PENDÊNCIA",diff,mensagem:"CAPACIDADE-ALVO NÃO CADASTRADA."};if(max>0&&total>max)return{status:"BLOQUEADO",diff,mensagem:"PESO ACIMA DA CAPACIDADE MÁXIMA/LEGAL DO VEÍCULO."};if(total===alvo)return{status:"CONFERE",diff:0,mensagem:"CONFERE — PESO IGUAL À CAPACIDADE-ALVO."};if(total<alvo)return{status:"PENDÊNCIA",diff,mensagem:"CARGA ABAIXO DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."};return{status:"PENDÊNCIA",diff,mensagem:"CARGA ACIMA DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."}}
+export function requiredDocs(carga){const docs=["NF PRINCIPAL DO PRODUTO","BOLETO/TÍTULO DO FORNECEDOR"];if(carga?.pallet==="COM PALLETS")docs.splice(1,0,"NF DE PALLETS");if(carga?.modalidadeFrete==="FOB")docs.push("COMPROVANTE DE PAGAMENTO DO FRETE");return docs}
