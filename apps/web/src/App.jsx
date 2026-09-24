@@ -8942,9 +8942,13 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
   async function anexarDossie(n, tipo, file) {
     if (!file) return;
     const fileId = uid("docnf");
+    const boleto=tipo==="BOLETO DO FORNECEDOR";
+    let documentoPath="";
+    if(boleto&&supabase){documentoPath="boletos/"+fileId+"/"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");const {error}=await supabase.storage.from("forte-vendas-financeiro").upload(documentoPath,file,{upsert:false,contentType:file.type||"application/pdf"});if(error)return alert("NÃO FOI POSSÍVEL GUARDAR O BOLETO PARA A CONFERÊNCIA FINANCEIRA: "+error.message)}
     await putFile(fileId, file);
     onChange((d) => ({
       ...d,
+      preConferenciaBoletos: boleto&&!(d.preConferenciaBoletos||[]).some(x=>x.documentoId===fileId)?[...(d.preConferenciaBoletos||[]),{id:uid("preboleto"),documentoId:fileId,documentoPath,arquivoNome:file.name,arquivoTipo:file.type,origem:"DOSSIÊ DA NF",status:"RECEBIDO",fornecedor:n.emitente||"",beneficiarioDocumento:n.emitenteCnpj||"",nf:n.numero||"",carga:(d.cargas||[]).find(c=>c.id===(n.cargaId||links[n.id]))?.codigo||n.cargaId||"",valor:0,valorNf:0,vencimento:"",linhaDigitavel:"",criadoEm:nowISO(),criadoPor:currentUser?.nome||"USUÁRIO"}]:d.preConferenciaBoletos,
       documentos: [
         ...(d.documentos || []),
         {
