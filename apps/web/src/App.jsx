@@ -10061,15 +10061,14 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
   });
   const clientes = (data.clientes || []).filter((x) => x.ativo !== false),
     produtos = (data.produtos || []).filter(
-      (x) =>
-        x.ativo !== false &&
-        (!carga.marca ||
-          norm(x.marca).includes(norm(carga.marca)) ||
-          norm(carga.marca).includes(norm(x.marca))),
+      (x) => x.ativo !== false &&
+        ((data.notasFiscais || []).some(n=>n.cargaId===carga.id&&n.destinacao==="CARGA DIRETA")
+          ? (data.notasFiscais || []).some(n=>n.cargaId===carga.id&&n.destinacao==="CARGA DIRETA"&&(n.produtos||[]).some(i=>norm(i.produto)===norm(x.nome)))
+          : (!carga.marca || norm(x.marca).includes(norm(carga.marca)) || norm(carga.marca).includes(norm(x.marca)))),
     );
   const notaDireta=(data.notasFiscais||[]).find(n=>n.cargaId===carga.id&&n.destinacao==="CARGA DIRETA");
   const itensNota=(notaDireta?.produtos||[]).map(i=>({nome:i.produto,qtd:Number(i.quantidade||0),produtoId:(data.produtos||[]).find(p=>norm(p.nome)===norm(i.produto))?.id}));
-  const pendentes=(data.vendas||[]).filter(v=>v.status==="PENDENTE"&&!v.cargaId&&!!v.produtoId);
+  const pendentes=(data.vendas||[]).filter(v=>v.status==="PENDENTE"&&!v.cargaId&&!!v.produtoId&&(!itensNota.length||itensNota.some(i=>i.produtoId===v.produtoId)));
   const [vendaPendenteId,setVendaPendenteId]=useState("");
   const vendasExistentes = (carga.vendaIds || [])
     .map((id) => (data.vendas || []).find((v) => v.id === id))
@@ -10147,6 +10146,7 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       return alert("INFORME O NÚMERO E A DATA DA NOTA FISCAL.");
     if (!pedido && !os)
       return alert("INFORME PELO MENOS UMA REFERÊNCIA: PEDIDO OU OS.");
+    if (notaDireta?.finalizacaoDiretaEm) return alert("ESTA NOTA JÁ FOI FINALIZADA.");
     if (!linhas.length)
       return alert("ADICIONE PELO MENOS UMA VENDA / CLIENTE À DISTRIBUIÇÃO.");
     const totalQtd = linhas.reduce((a, x) => a + Number(x.qtd || 0), 0),
