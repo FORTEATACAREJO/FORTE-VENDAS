@@ -10057,10 +10057,15 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
           norm(x.marca).includes(norm(carga.marca)) ||
           norm(carga.marca).includes(norm(x.marca))),
     );
+  const notaDireta=(data.notasFiscais||[]).find(n=>n.cargaId===carga.id&&n.destinacao==="CARGA DIRETA");
+  const itensNota=(notaDireta?.produtos||[]).map(i=>({nome:i.produto,qtd:Number(i.quantidade||0),produtoId:(data.produtos||[]).find(p=>norm(p.nome)===norm(i.produto))?.id}));
+  const pendentes=(data.vendas||[]).filter(v=>v.status==="PENDENTE"&&!v.cargaId&&!!v.produtoId);
+  const [vendaPendenteId,setVendaPendenteId]=useState("");
   const vendasExistentes = (carga.vendaIds || [])
     .map((id) => (data.vendas || []).find((v) => v.id === id))
     .filter(Boolean);
   const qtdBaseProduto = (pid) => {
+    if (itensNota.length) return itensNota.filter(i=>i.produtoId===pid).reduce((sum,i)=>sum+i.qtd,0);
     if (carga.produtoId === pid && Number(carga.qtd || 0) > 0)
       return Number(carga.qtd || 0);
     const existentes = vendasExistentes
@@ -10145,8 +10150,8 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       let seq = Number(d.settings?.nextVendaSeq || 1);
       const novas = linhas.map((x) => ({
         ...x,
-        id: uid("v"),
-        numeroVenda: `VEN-${new Date().getFullYear()}-${String(seq++).padStart(6, "0")}`,
+        id: x.origemVendaId || uid("v"),
+        numeroVenda: x.numeroVenda || `VEN-${new Date().getFullYear()}-${String(seq++).padStart(6, "0")}`,
         clienteId: x.clienteId,
         produtoId: x.produtoId,
         precoUnitario: x.preco,
@@ -10160,67 +10165,6 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
         numeroPedidoFornecedor: pedido,
         numeroOSFornecedor: os,
         origem: "DISTRIBUIÇÃO DA NF DA CARGA",
-      }));
-      const jaEntrada = (d.estoqueMov || []).some(
-        (x) =>
-          x.cargaId === carga.id &&
-          x.numeroNotaFiscal === numero &&
-          String(x.tipo || "").startsWith("ENTRADA"),
-      );
-      const baseItens = carga.produtoId
-        ? [{ produtoId: carga.produtoId, qtd: Number(carga.qtd || 0) }]
-        : Object.values(
-            vendasExistentes.reduce((a, v) => {
-              if (!v.produtoId) return a;
-              a[v.produtoId] = a[v.produtoId] || {
-                produtoId: v.produtoId,
-                qtd: 0,
-              };
-              a[v.produtoId].qtd += Number(v.qtd || 0);
-              return a;
-            }, {}),
-          );
-      const entradas = jaEntrada
-        ? []
-        : baseItens.map((b) => {
-            const p = (d.produtos || []).find((x) => x.id === b.produtoId);
-            return {
-              id: uid("est"),
-              data: nf.data,
-              dataHora: nowISO(),
-              unidade: carga.unidade,
-              marca: p?.marca || carga.marca,
-              produtoId: b.produtoId,
-              produto: p?.nome || carga.produto,
-              tipo: "ENTRADA - COMPRA/NF DISTRIBUÍDA",
-              quantidade: Number(b.qtd || 0),
-              custoUnitario: Number(p?.custoLiquidoSaco || p?.precoCompra || 0),
-              referencia: `NF ${numero} • ${pedido ? `PEDIDO ${pedido}` : `OS ${os}`}`,
-              numeroNotaFiscal: numero,
-              numeroPedidoFornecedor: pedido,
-              numeroOSFornecedor: os,
-              cargaId: carga.id,
-              usuario: currentUser?.nome || "",
-            };
-          });
-      const saidas = novas.map((v) => ({
-        id: uid("est"),
-        data: nf.data,
-        dataHora: nowISO(),
-        unidade: carga.unidade,
-        marca: v.marca,
-        produtoId: v.produtoId,
-        produto: v.produto,
-        tipo: "SAÍDA - VENDA DIRETA / DISTRIBUIÇÃO NF",
-        quantidade: Number(v.qtd || 0),
-        referencia: `${v.numeroVenda} • NF ${numero}`,
-        numeroNotaFiscal: numero,
-        numeroPedidoFornecedor: pedido,
-        numeroOSFornecedor: os,
-        cargaId: carga.id,
-        vendaId: v.id,
-        clienteId: v.clienteId,
-        usuario: currentUser?.nome || "",
       }));
       const palletsCliente = linhas
         .filter(
@@ -10256,12 +10200,11 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       return {
         ...d,
         settings: { ...d.settings, nextVendaSeq: seq },
-        vendas: [...(d.vendas || []), ...novas],
-        estoqueMov: [...(d.estoqueMov || []), ...entradas, ...saidas],
+        vendas: [...(d.vendas || []).map(v=>novas.find(n=>n.id===v.id)||v), ...novas.filter(n=>!(d.vendas||[]).some(v=>v.id===n.id))],
         palletClientes: [...(d.palletClientes || []), ...palletsCliente],
         palletPatrimonio: [...(d.palletPatrimonio || []), ...palletsForte],
         notasFiscais: (d.notasFiscais || []).map((x) =>
-          x.cargaId === carga.id || upper(x.numero) === numero
+          x.id === notaDireta?.id || (!notaDireta && (x.cargaId === carga.id || upper(x.numero) === numero))
             ? {
                 ...x,
                 cargaId: carga.id,
@@ -10420,6 +10363,10 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       </div>
       <div className="transportBox">
         <h3>DISTRIBUIÇÃO ENTRE CLIENTES</h3>
+        <label>SELECIONAR VENDA PENDENTE
+          <select value={vendaPendenteId} onChange={e=>setVendaPendenteId(e.target.value)}><option value="">SELECIONE...</option>{pendentes.filter(v=>!linhas.some(x=>x.origemVendaId===v.id)).map(v=><option key={v.id} value={v.id}>{v.numeroVenda||v.id} • {v.cliente} • {v.produto} • {v.qtd} SC</option>)}</select>
+        </label><button type="button" className="secondary" onClick={()=>{const v=pendentes.find(x=>x.id===vendaPendenteId);if(!v)return;const p=(data.produtos||[]).find(x=>x.id===v.produtoId);const cliente=clientes.find(x=>x.id===v.clienteId);if(!p||!cliente)return alert("VENDA PENDENTE SEM PRODUTO OU CLIENTE VÁLIDO.");const ja=linhas.filter(x=>x.produtoId===p.id).reduce((a,x)=>a+Number(x.qtd||0),0);const gravado=vendasExistentes.filter(x=>x.produtoId===p.id&&x.origem==="DISTRIBUIÇÃO DA NF DA CARGA").reduce((a,x)=>a+Number(x.qtd||0),0);if(ja+Number(v.qtd||0)+gravado>qtdBaseProduto(p.id))return alert("A QUANTIDADE DESTA VENDA EXCEDE O SALDO DO PRODUTO NA NF.");setLinhas(a=>[...a,{...v,origemVendaId:v.id,cliente:cliente.nome,produto:p.nome,marca:p.marca,preco:Number(v.precoUnitario||v.preco||0),qtd:Number(v.qtd),destino:v.destino||cliente.cidade||"",condicaoPagamento:v.condicaoPagamento||cliente.condicaoPagamento||"A VISTA"}]);setVendaPendenteId("")}}>ADICIONAR VENDA PENDENTE</button>
+        {itensNota.length>0&&<p className="note">ITENS DA NF: {itensNota.map(i=>i.nome+" "+i.qtd+" SC").join(" • ")}</p>}
         <div className="miniGrid">
           <Field label="CLIENTE">
             <select
