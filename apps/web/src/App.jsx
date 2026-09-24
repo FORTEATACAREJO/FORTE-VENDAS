@@ -2936,7 +2936,7 @@ export default function App() {
         )}
         {tab === "conferencia" && (
           <section className="card">
-            <h2>CONFERÊNCIA / DOCUMENTOS COM IA</h2>
+            <h2>PAINEL DE NOTAS FISCAIS — CONFERÊNCIA E DESTINAÇÃO</h2>
             <BancoNotasFiscais
               data={data}
               onChange={setData}
@@ -3246,59 +3246,6 @@ export default function App() {
         {tab === "painelVendas" && <SalesPanel data={data} />}
         {tab === "painelBalcao" && <CounterSalesPanel data={data} />}
       </main>
-      <aside className="panel">
-        <div className="panelHead">
-          <h3>PAINEL DE CARGAS</h3>
-          <button>+</button>
-        </div>
-        {panelLoads.length === 0 ? (
-          <p className="muted">NENHUMA CARGA ATIVA.</p>
-        ) : (
-          panelLoads.map((c) => {
-            const req = requiredDocs(c);
-            const pend = req.filter(
-              (t) => docStatus(c, t) !== "RESOLVIDO",
-            ).length;
-            return (
-              <div
-                className={`panelLoad ${c.status === "AZUL" ? "done" : ""}`}
-                key={c.id}
-              >
-                <div>
-                  <b>{c.codigo}</b>
-                  <strong>
-                    {c.status === "AZUL"
-                      ? "AZUL / FINALIZADA"
-                      : `🔴 ${pend} PEND.`}
-                  </strong>
-                </div>
-                <span>
-                  {c.motorista} • {c.marca}
-                </span>
-                <span>
-                  {(c.pesoKg / 1000).toFixed(1)} T • {c.fase}
-                </span>
-                <div className="panelBtns">
-                  <button
-                    onClick={() => {
-                      setActiveLoadId(c.id);
-                      setModal({ type: "load", loadId: c.id });
-                    }}
-                  >
-                    ABRIR
-                  </button>
-                  <button
-                    className="dangerBtn"
-                    onClick={() => cancelLoad(c.id)}
-                  >
-                    CANCELAR
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </aside>
       {modal?.type === "ajudaIa" && (
         <AjudaIa
           tab={modal.tab}
@@ -9295,6 +9242,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     }
   }
   function prepararDireta(n) {
+    if (n.destinacao === "FORTE ATACAREJO" || n.status === "INCORPORADA AO ESTOQUE" || n.status === "OPERAÇÃO FINALIZADA") return alert("ESTA NOTA JÁ FOI DESTINADA AO ESTOQUE OU FINALIZADA.");
     if (!exigirDossie(n)) return;
     const notaPalletAutomatica = notaPalletRelacionada(n);
     const cargaId = links[n.id] || n.cargaId || sugerida(n)?.id;
@@ -9361,13 +9309,6 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
       return alert(
         "ESTA NOTA JÁ FOI INCORPORADA AO ESTOQUE. A DUPLICIDADE FOI BLOQUEADA.",
       );
-    if (
-      !confirm(`DESEJA INCORPORAR ESTA NOTA AO ESTOQUE DA FORTE ATACAREJO?
-
-SIM = ENTRADA NO ESTOQUE
-NÃO = DISTRIBUIR NA VENDA DIRETA`)
-    )
-      return prepararDireta(n);
     const cargaId = links[n.id] || n.cargaId || sugerida(n)?.id || "",
       carga = cargas.find((c) => c.id === cargaId),
       destinoOperacional =
@@ -10042,14 +9983,14 @@ DESEJA DAR ENTRADA DESTES PALLETS NO ESTOQUE / GALPÃO DA FORTE ATACAREJO?`);
                       INICIAR CONFERÊNCIA
                     </button>
                     <button disabled={!ck.ok} onClick={() => prepararDireta(n)}>
-                      CARGA DIRETA
+                      ENVIAR PARA VENDAS DIRETAS
                     </button>
                     <button
                       disabled={!ck.ok}
                       className="secondary"
                       onClick={() => forte(n)}
                     >
-                      FORTE ATACAREJO
+                      ENVIAR PARA ESTOQUE
                     </button>
                     <button
                       className="secondary"
