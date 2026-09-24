@@ -1612,6 +1612,12 @@ export default function App() {
   async function attachDoc(cargaId, tipo, file) {
     const id = uid("doc");
     await putFile(id, file);
+    let documentoFinanceiroPath = "";
+    if(tipo==="BOLETO/TÍTULO DO FORNECEDOR" && supabase) {
+      documentoFinanceiroPath="boletos/"+id+"/"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const {error}=await supabase.storage.from("forte-vendas-financeiro").upload(documentoFinanceiroPath,file,{upsert:false,contentType:file.type||"application/pdf"});
+      if(error){alert("BOLETO NÃO ENVIADO À PRÉ-CONFERÊNCIA: FALHA AO GUARDAR DOCUMENTO NA NUVEM. "+error.message);return}
+    }
     let nfeExtraida = null;
     let meta = {
       id,
@@ -1674,6 +1680,7 @@ export default function App() {
           vencimento: "",
           status: "RECEBIDO",
           documentoId: id,
+          documentoPath: documentoFinanceiroPath,
           criadoEm: nowISO(),
           criadoPor: currentUser?.nome || "USUÁRIO",
           origem: "ANEXO DA CARGA / DOSSIÊ",
