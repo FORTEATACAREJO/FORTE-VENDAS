@@ -29,7 +29,7 @@ export default function PalletsV47({data,onChange,audit,currentUser}){
   const origem=form.tipo==="COMPRA"?"FORA DO PATRIMÔNIO":form.tipo==="RETORNO"?"CLIENTE / COMODATO":form.origem;
   const destino=form.tipo==="VENDA"?"BAIXA DEFINITIVA":form.tipo==="COMODATO A CLIENTE"?"CLIENTE / COMODATO":form.destino;
   if(form.tipo==="RETORNO"&&saldoCliente(cliente)<q)return alert(`RETORNO BLOQUEADO: ${cliente} POSSUI ${saldoCliente(cliente)} PALLET(S) EM COMODATO.`);
-  if(!["COMPRA","AJUSTE DE ENTRADA"].includes(form.tipo)&&saldo(origem)<q)return alert(`MOVIMENTO BLOQUEADO: SALDO DISPONÍVEL EM ${origem}: ${saldo(origem)} PALLET(S).`);
+  if(!["COMPRA","AJUSTE DE ENTRADA","RETORNO"].includes(form.tipo)&&saldo(origem)<q)return alert(`MOVIMENTO BLOQUEADO: SALDO DISPONÍVEL EM ${origem}: ${saldo(origem)} PALLET(S).`);
   const movimento={id:id(),...form,cliente:["COMODATO A CLIENTE","RETORNO"].includes(form.tipo)?cliente:"",origem,destino,quantidade:q,custoUnitario:Number(form.custoUnitario||0),valorTotal:q*Number(form.custoUnitario||0),afetaPatrimonio:["COMPRA","VENDA","PERDA / AVARIA","AJUSTE DE ENTRADA","AJUSTE DE SAÍDA"].includes(form.tipo),dataHora:now(),usuario:currentUser?.nome||""};
   onChange(d=>({...d,palletMovimentosV47:[...(d.palletMovimentosV47||[]),movimento],auditoria:[...(d.auditoria||[]),{id:id(),acao:"MOVIMENTAÇÃO PATRIMONIAL DE PALLETS",detalhe:`${form.tipo} • ${q} • ${origem} → ${destino} • ${form.documento||"SEM DOCUMENTO"}`,usuario:currentUser?.nome||"",dataHora:now()}]}));
   audit?.("MOVIMENTAÇÃO PATRIMONIAL DE PALLETS","",`${form.tipo} ${q} ${origem} ${destino}`);setForm(x=>({...x,quantidade:"",custoUnitario:"",documento:"",observacao:""}));alert("MOVIMENTAÇÃO REGISTRADA. PATRIMÔNIO E LOCALIZAÇÃO FORAM ATUALIZADOS SEM DUPLICIDADE.");
