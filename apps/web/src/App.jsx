@@ -6,6 +6,7 @@ import EmployeesV654 from "./EmployeesV654.jsx";
 import PreConferenciaBoletos from "./PreConferenciaBoletos.jsx";
 import ItauPagamentos from "./ItauPagamentos.jsx";
 import InfinitePay from "./InfinitePay.jsx";
+import FinanceiroHub from "./FinanceiroHub.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
 import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -2088,6 +2089,10 @@ export default function App() {
     .filter((c) => c.status !== "CANCELADA")
     .slice()
     .reverse();
+  if(new URLSearchParams(window.location.search).get("app")==="financeiro") {
+    if(!canAccessGroup("financeiro"))return <main className="main"><h1>ACESSO AO FINANCEIRO NÃO AUTORIZADO</h1><a href="/">VOLTAR AO FORTE VENDAS</a></main>;
+    return <FinanceiroHub data={data} onChange={setData} currentUser={currentUser}/>;
+  }
   return (
     <div className="app">
       <aside className="sideNav">
@@ -2168,6 +2173,7 @@ export default function App() {
           <div>
             <h1>FORTE VENDAS</h1>
             <small>FORTE ATACAREJO — CONTROLE OPERACIONAL + IA</small>
+            {canAccessGroup("financeiro")&&<p><a href="/?app=financeiro" className="secondary">▣ ABRIR FORTE FINANCEIRO</a></p>}
           </div>
           <div className="globalSearchWrap">
             <input
@@ -3828,6 +3834,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       )
     )
       return;
+    const fechadoEm = new Date().toISOString();
     onChange((d) => ({
       ...d,
       caixasBalcao: (d.caixasBalcao || []).map((x) =>
@@ -3835,7 +3842,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           ? {
               ...x,
               status: "FECHADO",
-              fechadoEm: new Date().toISOString(),
+              fechadoEm,
               fechadoPor: currentUser?.nome || "",
               totalVendas,
               porForma,
@@ -3844,6 +3851,22 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
               saldoContado,
               diferenca,
               justificativa,
+              estoqueSnapshot: (d.produtos || []).map((p) => {
+                const movimentos = (d.estoqueMov || []).filter((m) =>
+                  m.produtoId === p.id &&
+                  (!m.unidade || m.unidade === caixaAberto.unidade) &&
+                  String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) <= fechadoEm
+                );
+                const abertura = String(caixaAberto.abertoEm || caixaAberto.data + "T00:00:00");
+                const noDia = movimentos.filter((m) => String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) >= abertura);
+                const saldoFinal = buildStockLedger(d, caixaAberto.unidade, p.id).filter((m) =>
+                  String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) <= fechadoEm
+                ).at(-1)?.saldo || 0;
+                const entradas = noDia.filter((m) => String(m.tipo||"").startsWith("ENTRADA")).reduce((a,m)=>a+Number(m.quantidade||0),0);
+                const saidas = noDia.filter((m) => String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.quantidade||0),0);
+                const ajustes = noDia.filter((m) => !String(m.tipo||"").startsWith("ENTRADA") && !String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.ajuste??m.quantidade??0),0);
+                return {produtoId:p.id,produto:p.nome,marca:p.marca,saldoInicial:saldoFinal-entradas+saidas-ajustes,entradas:entradas+Math.max(0,ajustes),saidas:saidas+Math.max(0,-ajustes),saldoFinal};
+              }).filter((p)=>p.saldoInicial||p.entradas||p.saidas||p.saldoFinal),
               creditosClientesSnapshot: (d.clientes || [])
                 .map((cli) => ({
                   clienteId: cli.id,
@@ -6675,7 +6698,7 @@ function VendasExternas({ data, onChange, currentUser }) {
 }
 function buildStockLedger(data, unidade, produtoId) {
   const rows = (data.estoqueMov || [])
-    .filter((x) => x.produtoId === produtoId)
+    .filter((x) => x.produtoId === produtoId && (!x.unidade || x.unidade === unidade))
     .slice()
     .sort((a, b) =>
       String(a.dataHora || a.data || "").localeCompare(
