@@ -1,0 +1,19 @@
+{
+  "name": "FORTE FINANCEIRO",
+  "short_name": "Financeiro",
+  "description": "Caixa, contas, cartões e estoque da Forte Atacarejo",
+  "id": "/financeiro",
+  "start_url": "/?app=financeiro",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0a8b78",
+  "icons": [
+    {
+      "src": "/financeiro-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
