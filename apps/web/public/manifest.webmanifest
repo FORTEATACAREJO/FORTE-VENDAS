@@ -11,10 +11,10 @@
   "theme_color": "#ab0808",
   "icons": [
     {
-      "src": "/forte-vendas-icon.jpg",
-      "sizes": "1536x1536",
-      "type": "image/jpeg",
-      "purpose": "any"
+      "src": "/forte-vendas-icon-oficial.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
