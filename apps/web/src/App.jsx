@@ -3874,6 +3874,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                 const ajustes = noDia.filter((m) => !String(m.tipo||"").startsWith("ENTRADA") && !String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.ajuste??m.quantidade??0),0);
                 return {produtoId:p.id,produto:p.nome,marca:p.marca,saldoInicial:saldoFinal-entradas+saidas-ajustes,entradas:entradas+Math.max(0,ajustes),saidas:saidas+Math.max(0,-ajustes),saldoFinal};
               }).filter((p)=>p.saldoInicial||p.entradas||p.saidas||p.saldoFinal),
+              titulosSnapshot: {
+                receber: (d.contasReceber || []).filter(t=>t.vencimento===caixaAberto.data).map(t=>({id:t.id,cliente:t.cliente||t.titulo,valor:t.valor,status:t.status})),
+                pagar: (d.contasPagar || []).filter(t=>t.vencimento===caixaAberto.data && (!t.preConferenciaId || (d.preConferenciaBoletos||[]).some(b=>b.id===t.preConferenciaId && b.status==="INCORPORADO AO CONTAS A PAGAR"))).map(t=>({id:t.id,fornecedor:t.fornecedor,valor:t.valor,status:t.status}))
+              },
               creditosClientesSnapshot: (d.clientes || [])
                 .map((cli) => ({
                   clienteId: cli.id,
