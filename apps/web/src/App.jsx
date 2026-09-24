@@ -7,6 +7,7 @@ import PreConferenciaBoletos from "./PreConferenciaBoletos.jsx";
 import ItauPagamentos from "./ItauPagamentos.jsx";
 import InfinitePay from "./InfinitePay.jsx";
 import FinanceiroHub from "./FinanceiroHub.jsx";
+import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
 import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -534,6 +535,7 @@ const CARGOS = [
 ];
 const MODULES = [
   ["clientes", "1", "CARGA DIRETA", "Venda/carga direta com destino definido."],
+  ["diretas", "1A", "PAINEL VENDAS DIRETAS", "Nota fiscal, documentos e distribuição por cliente."],
   ["balcao", "2", "VENDA BALCÃO", "Vendas no balcão, entrega, frete e caixa."],
   [
     "externas",
@@ -633,6 +635,7 @@ const MODULE_GROUPS = [
     subtitle: "Pedidos, vendas, compras e planejamento comercial.",
     modules: [
       "clientes",
+      "diretas",
       "balcao",
       "externas",
       "compraForte",
@@ -2119,6 +2122,7 @@ export default function App() {
         >
           ▦ VENDAS E COMPRAS
         </button>}
+        {canAccessGroup("vendas") && <button className={tab==="diretas"?"sideActive":""} onClick={()=>setTab("diretas")}>▣ VENDAS DIRETAS</button>}
         {canAccessGroup("logistica") && <button
           className={tab === "group:logistica" ? "sideActive" : ""}
           onClick={() => setTab("group:logistica")}
@@ -2941,7 +2945,7 @@ export default function App() {
               data={data}
               onChange={setData}
               currentUser={currentUser}
-              onDireta={(loadId) => setModal({ type: "distribute", loadId })}
+              onDireta={() => setTab("diretas")}
             />
             {panelLoads.length === 0 ? (
               <p>NENHUMA CARGA ATIVA.</p>
@@ -3100,6 +3104,7 @@ export default function App() {
             currentUser={currentUser}
           />
         )}
+        {tab === "diretas" && <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>}
         {tab === "todasCargas" && (
           <TodasCargas
             data={data}
@@ -9246,8 +9251,8 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     }
   }
   function prepararDireta(n) {
-    if (n.destinacao === "FORTE ATACAREJO" || n.status === "INCORPORADA AO ESTOQUE" || n.status === "OPERAÇÃO FINALIZADA") return alert("ESTA NOTA JÁ FOI DESTINADA AO ESTOQUE OU FINALIZADA.");
-    if (!exigirDossie(n)) return;
+    if (n.destinacao === "FORTE ATACAREJO" || n.status === "INCORPORADA AO ESTOQUE" || n.finalizacaoDiretaEm) return alert("ESTA NOTA JÁ FOI DESTINADA AO ESTOQUE OU FINALIZADA.");
+    if (!n.documentoXmlId || !(n.produtos||[]).length) return alert("IMPORTAR O XML COMPLETO COM PRODUTOS ANTES DE ENVIAR A NF PARA VENDAS DIRETAS.");
     const notaPalletAutomatica = notaPalletRelacionada(n);
     const cargaId = links[n.id] || n.cargaId || sugerida(n)?.id;
     if (!cargaId)
@@ -9256,6 +9261,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
       os = (n.os || [])[0] || "";
     onChange((d) => ({
       ...d,
+      produtos:[...(d.produtos||[]),...(n.produtos||[]).filter(i=>!(d.produtos||[]).some(p=>norm(p.nome)===norm(i.produto))).map(i=>({id:uid("prod"),nome:String(i.produto||"").trim(),marca:upper(carga?.marca||n.emitente||"FORNECEDOR"),pesoKg:Number(i.pesoKg||0),unidadeVenda:"SACO/SACA",ativo:true,origemNome:"NF/XML FORNECEDOR",criadoEm:nowISO()}))],
       notasFiscais: (d.notasFiscais || []).map((x) =>
         x.id === n.id
           ? {
@@ -9988,7 +9994,7 @@ DESEJA DAR ENTRADA DESTES PALLETS NO ESTOQUE / GALPÃO DA FORTE ATACAREJO?`);
                     >
                       INICIAR CONFERÊNCIA
                     </button>
-                    <button disabled={!ck.ok} onClick={() => prepararDireta(n)}>
+                    <button disabled={!n.documentoXmlId || !(n.produtos||[]).length} onClick={() => prepararDireta(n)}>
                       ENVIAR PARA VENDAS DIRETAS
                     </button>
                     <button
