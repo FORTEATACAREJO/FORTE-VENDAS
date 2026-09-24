@@ -37,9 +37,15 @@ export default function FinanceiroHub({data,onChange,currentUser}){
   if(caixa.justificativa)linha("Justificativa: "+caixa.justificativa);
   linha("FORMAS DE PAGAMENTO");
   Object.entries(caixa.porForma||{}).forEach(([forma,valor])=>linha(forma+": "+moeda(valor)));
+  linha("VENDAS DO CAIXA - DETALHAMENTO");
+  const vendas=(data.vendasBalcao||[]).filter(v=>(caixa.vendaIds||[]).includes(v.id));
+  vendas.forEach(v=>{linha((v.numeroVenda||v.id)+" | "+(v.cliente||"-")+" | "+(v.pagamento||"-")+" | "+moeda(v.total));(v.itens||[]).forEach(it=>linha("  "+(it.produto||it.nome||it.produtoId)+" | "+Number(it.qtd||0)+" SC | "+moeda(it.subtotal||Number(it.qtd||0)*Number(it.precoUnitario||0))))});
   linha("ESTOQUE POR PRODUTO - POSICAO CONGELADA NO FECHAMENTO");
   if(!caixa.estoqueSnapshot)linha("Fechamento antigo sem posicao historica de estoque; nao reconstruir com saldo atual.");
   estoque.forEach(x=>linha((x.produto||x.produtoId)+" | Inicial "+x.saldoInicial+" | Entrada "+x.entradas+" | Saida "+x.saidas+" | Final "+x.saldoFinal));
+  linha("TITULOS E RECEBIVEIS COM VENCIMENTO NO DIA - POSICAO ATUAL");
+  (data.contasReceber||[]).filter(x=>x.vencimento===caixa.data).forEach(x=>linha("A RECEBER | "+(x.cliente||x.titulo||"-")+" | "+moeda(x.valor)+" | "+(x.status||"-")));
+  (data.contasPagar||[]).filter(x=>x.vencimento===caixa.data && (!x.preConferenciaId || (data.preConferenciaBoletos||[]).some(b=>b.id===x.preConferenciaId&&b.status==="INCORPORADO AO CONTAS A PAGAR"))).forEach(x=>linha("A PAGAR | "+(x.fornecedor||"-")+" | "+moeda(x.valor)+" | "+(x.status||"-")));
   linha("Conferencia: ______________________________________________");
   pdf.save("FORTE-FINANCEIRO-"+caixa.data+"-"+String(caixa.id).slice(-6)+".pdf");
  };
