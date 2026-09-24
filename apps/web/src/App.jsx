@@ -13283,6 +13283,44 @@ function AjudaIa({ tab, onClose, onNavigate }) {
     </Modal>
   );
 }
+function TodasCargas({ data }) {
+  const [filtro, setFiltro] = useState("TODAS");
+  const cargas = (data.cargas || []).slice().sort((a, b) =>
+    String(b.criadaEm || b.dataCarregamento || "").localeCompare(String(a.criadaEm || a.dataCarregamento || ""))
+  );
+  const categoria = (c) => {
+    const saldo = Number(c.qtdSemDestino ?? 0);
+    if (c.planejamento && (saldo > 0 || !(c.vendaIds || []).length))
+      return "SEM DESTINO";
+    if (c.destinacao === "D" || c.destinoTipo === "D" || c.tipo === "DIRETA" || c.cargaDireta)
+      return "DIRETA";
+    return "PARA FORTE";
+  };
+  const visiveis = filtro === "TODAS" ? cargas : cargas.filter((c) => categoria(c) === filtro);
+  return (
+    <section className="card">
+      <div className="sectionHead"><div><h2>TODAS AS CARGAS</h2><p>CONSULTA DE CARGAS PARA FORTE, SEM DESTINO E DIRETAS.</p></div></div>
+      <div className="buttonRow">
+        {["TODAS", "PARA FORTE", "SEM DESTINO", "DIRETA"].map((opcao) => (
+          <button key={opcao} type="button" className={filtro === opcao ? "activeChoice" : "ghost dark"} onClick={() => setFiltro(opcao)}>{opcao}</button>
+        ))}
+      </div>
+      <div className="cadList">
+        {visiveis.length === 0 && <p>NENHUMA CARGA NESTA CATEGORIA.</p>}
+        {visiveis.map((c) => (
+          <div className="cadRow" key={c.id}>
+            <div>
+              <b>{c.codigo || c.numeroPedido || "CARGA SEM CÓDIGO"} • {c.marca || c.produto || "PRODUTO NÃO INFORMADO"}</b>
+              <small>{categoria(c)} • {c.motorista || "MOTORISTA PENDENTE"} • {Number(c.qtd || 0)} SC • {c.fase || c.status || "PENDENTE"}</small>
+            </div>
+            <span>{c.status === "AZUL" || c.fase === "FINALIZADA" ? "FINALIZADA" : "PENDENTE"}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PlanejamentoCargas({ data, onChange, currentUser }) {
   const [motoristaId, setMotoristaId] = useState("");
   const [fornecedorId, setFornecedorId] = useState("");
