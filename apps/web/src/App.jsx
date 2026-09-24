@@ -9261,7 +9261,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
       os = (n.os || [])[0] || "";
     onChange((d) => ({
       ...d,
-      produtos:[...(d.produtos||[]),...(n.produtos||[]).filter(i=>!(d.produtos||[]).some(p=>norm(p.nome)===norm(i.produto))).map(i=>({id:uid("prod"),nome:String(i.produto||"").trim(),marca:upper(carga?.marca||n.emitente||"FORNECEDOR"),pesoKg:Number(i.pesoKg||0),unidadeVenda:"SACO/SACA",ativo:true,origemNome:"NF/XML FORNECEDOR",criadoEm:nowISO()}))],
+      produtos:[...(d.produtos||[]),...(n.produtos||[]).filter(i=>!(d.produtos||[]).some(p=>norm(p.nome)===norm(i.produto))).map(i=>({id:uid("prod"),nome:String(i.produto||"").trim(),marca:upper((d.cargas||[]).find(c=>c.id===cargaId)?.marca||n.emitente||"FORNECEDOR"),pesoKg:Number(i.pesoKg||0),unidadeVenda:"SACO/SACA",ativo:true,origemNome:"NF/XML FORNECEDOR",criadoEm:nowISO()}))],
       notasFiscais: (d.notasFiscais || []).map((x) =>
         x.id === n.id
           ? {
