@@ -1,5 +1,6 @@
 import{useEffect,useState}from"react";import App from"./App.jsx";import{setAuthContext,supabase,supabaseConfigured}from"./supabase.js";
-const LAST_EMAIL_KEY="forte_vendas_last_email";\nconst PROD_URL="https://forte-vendas.onrender.com";
+const LAST_EMAIL_KEY="forte_vendas_last_email";
+const PROD_URL="https://forte-vendas.onrender.com";
 const valid=s=>s.length>=9&&/[A-Z]/.test(s)&&/[a-z]/.test(s)&&/\d/.test(s)&&/[^A-Za-z0-9]/.test(s)&&!/(012|123|234|345|456|567|678|789|987|876|765|654|543|432|321|210)/.test(s);
 export default function AuthGate(){const[ready,setReady]=useState(!supabaseConfigured),[session,setSession]=useState(null),[recovery,setRecovery]=useState(false),[email,setEmail]=useState(()=>{try{return localStorage.getItem(LAST_EMAIL_KEY)||""}catch{return""}}),[password,setPassword]=useState(""),[confirm,setConfirm]=useState(""),[message,setMessage]=useState("");
 useEffect(()=>{if(!supabase)return;supabase.auth.getSession().then(({data})=>setSession(data.session)).finally(()=>setReady(true));const{data}=supabase.auth.onAuthStateChange((event,next)=>{setSession(next);if(!next){setAuthContext(null);setReady(true);setRecovery(false)}if(event==="PASSWORD_RECOVERY")setRecovery(true)});return()=>data.subscription.unsubscribe()},[]);
