@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import {putFile,openFile} from "./fileStore";
+import {putFile,getFile,openFile} from "./fileStore";
 
 const STATUS = ["RECEBIDO", "EM ANÁLISE", "DIVERGENTE", "AGUARDANDO DOCUMENTO", "CONFERIDO", "INCORPORADO AO CONTAS A PAGAR", "REJEITADO/CANCELADO"];
 const money = (v) => Number(v || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
@@ -20,9 +20,11 @@ export default function PreConferenciaBoletos({ data, onChange, currentUser }) {
     setMessage(`${novos.length} DOCUMENTO(S) ENCAMINHADO(S) À PRÉ-CONFERÊNCIA.`);
   }
   function patch(id, key, value) { onChange((d) => ({ ...d, preConferenciaBoletos:(d.preConferenciaBoletos || []).map((x) => x.id === id ? {...x, [key]:value, atualizadoEm:now()} : x) })); }
-  function setStatus(item, status) {
+  async function setStatus(item, status) {
     if (!financial) return setMessage("SOMENTE USUÁRIO FINANCEIRO OU ADMINISTRADOR PODE CONFERIR/REJEITAR.");
-    const isDup = duplicate(item);
+    if(status==="CONFERIDO" && !(await getFile(item.documentoId).catch(()=>null))) return setMessage("ARQUIVO ORIGINAL INDISPONÍVEL NESTE DISPOSITIVO. CONFIRA E ANEXE O BOLETO ANTES DE VALIDAR.");
+    if(status==="CONFERIDO" && ![44,47,48].includes(String(item.linhaDigitavel||"").replace(/\D/g,"").length)) return setMessage("LINHA DIGITÁVEL INVÁLIDA: CONFIRA OS 44, 47 OU 48 DÍGITOS DO BOLETO.");
+    const isDup = duplicate(item) || (data.contasPagar||[]).some(x=>x.linhaDigitavel && x.linhaDigitavel===item.linhaDigitavel);
     if (status === "CONFERIDO" && (!item.documentoId || !item.fornecedor || !item.beneficiarioDocumento || !(Number(item.valor)>0) || !item.vencimento || !item.linhaDigitavel || !item.nf || !item.carga || !item.validacaoManual)) return setMessage("CONFIRA O ARQUIVO E PREENCHA FORNECEDOR, CNPJ/CPF, VALOR, VENCIMENTO, LINHA DIGITÁVEL, NF, CARGA E MARQUE A VALIDAÇÃO MANUAL.");
     if (status === "CONFERIDO" && item.valorNf && Math.abs(Number(item.valorNf)-Number(item.valor))>0.01) return setMessage("VALOR DO BOLETO DIFERE DA NF. RESOLVA A DIVERGÊNCIA ANTES DA CONFERÊNCIA.");
     if (status === "CONFERIDO" && isDup) return setMessage("DUPLICIDADE DETECTADA. O DOCUMENTO NÃO PODE SER CONFERIDO ATÉ A DIVERGÊNCIA SER RESOLVIDA.");
