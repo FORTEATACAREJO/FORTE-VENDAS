@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Forte Financeiro">
-<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#083f55"/><stop offset="1" stop-color="#0a8b78"/></linearGradient></defs>
-<rect width="512" height="512" rx="96" fill="url(#g)"/>
-<path d="M92 135h328v245H92z" rx="18" fill="#fff" opacity=".96"/>
-<path d="M92 178h328" stroke="#0a8b78" stroke-width="18"/>
-<path d="M144 249h96m-96 40h70m-70 40h70" stroke="#18445a" stroke-width="18" stroke-linecap="round"/>
-<circle cx="335" cy="286" r="66" fill="#0a8b78"/>
-<path d="M335 248v77m22-62c-12-10-42-9-45 6-6 23 48 12 47 35-1 16-33 21-50 7" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
-<text x="256" y="450" fill="#fff" font-family="Arial,sans-serif" font-size="39" font-weight="700" text-anchor="middle">FINANCEIRO</text>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#202a2c"/><stop offset="1" stop-color="#050606"/></linearGradient><linearGradient id="gold" x2="1" y2="1"><stop stop-color="#fff1a0"/><stop offset=".45" stop-color="#d9a72d"/><stop offset="1" stop-color="#8c5d0c"/></linearGradient></defs>
+<rect width="512" height="512" rx="92" fill="url(#bg)"/><path d="M54 300C90 150 225 68 407 95" fill="none" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
+<path d="M126 166l82-56 83 56v21H126z" fill="#eef1e9"/><path d="M151 171h115v96H151z" fill="#cfd6cf"/><path d="M177 195h64v18h-64zm0 34h64v18h-64z" fill="#263233"/>
+<rect x="284" y="154" width="112" height="146" rx="12" fill="#e9ede8"/><path d="M306 251h15v26h-15zm28-47h15v73h-15zm28-28h15v101h-15z" fill="#c99724"/><path d="M308 194c25-31 43-16 69-52" fill="none" stroke="#8c5d0c" stroke-width="8"/>
+<ellipse cx="213" cy="307" rx="74" ry="22" fill="#a36b0c"/><ellipse cx="213" cy="292" rx="74" ry="22" fill="url(#gold)"/><ellipse cx="213" cy="270" rx="74" ry="22" fill="url(#gold)"/><text x="213" y="285" text-anchor="middle" font-family="Arial" font-size="45" font-weight="700" fill="#fff">$</text>
+<rect x="293" y="286" width="112" height="120" rx="12" fill="#d7ddd8"/><rect x="309" y="302" width="80" height="25" rx="5" fill="#7eb875"/><g fill="#586361"><rect x="309" y="342" width="20" height="15"/><rect x="339" y="342" width="20" height="15"/><rect x="369" y="342" width="20" height="15"/><rect x="309" y="370" width="20" height="15"/><rect x="339" y="370" width="20" height="15"/><rect x="369" y="370" width="20" height="15"/></g>
+<text x="256" y="452" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="44" fill="#fff">Forte <tspan fill="#e3b63e">Financeiro</tspan></text><path d="M355 468h85" stroke="#e3b63e" stroke-width="7" stroke-linecap="round"/>
 </svg>
