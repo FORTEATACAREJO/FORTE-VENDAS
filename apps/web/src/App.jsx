@@ -10154,7 +10154,7 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
         (a, x) => a + Number(x.qtd || 0) * Number(x.preco || 0),
         0,
       ),
-      saldoBase = Number(carga.qtdSemDestino ?? carga.qtd ?? 0),
+      saldoBase = itensNota.length ? (Number.isFinite(Number(carga.qtdSemDestino)) && (carga.distribuicoesNota||[]).length ? Number(carga.qtdSemDestino) : itensNota.reduce((sum,i)=>sum+i.qtd,0)-vendasExistentes.filter(v=>v.origem==="DISTRIBUIÇÃO DA NF DA CARGA").reduce((sum,v)=>sum+Number(v.qtd||0),0)) : Number(carga.qtdSemDestino ?? carga.qtd ?? 0),
       saldo = Math.max(0, saldoBase - totalQtd);
     onChange((d) => {
       let seq = Number(d.settings?.nextVendaSeq || 1);
@@ -10222,10 +10222,8 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
                 siglaDestino: "D",
                 status:
                   saldo === 0
-                    ? "OPERAÇÃO FINALIZADA"
+                    ? "DISTRIBUIÇÃO DIRETA COMPLETA — AGUARDANDO CONFERÊNCIA"
                     : "DISTRIBUIÇÃO DIRETA EM ANDAMENTO",
-                finalizadaEm: saldo === 0 ? nowISO() : "",
-                finalizadaPor: saldo === 0 ? currentUser?.nome || "" : "",
               }
             : x,
         ),
