@@ -9303,11 +9303,13 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
   function forte(n) {
     if (!exigirDossie(n)) return;
     if (
+      n.destinacao === "CARGA DIRETA" ||
+      n.status === "DISTRIBUIÇÃO DIRETA EM ANDAMENTO" ||
       n.status === "OPERAÇÃO FINALIZADA" ||
       n.status === "INCORPORADA AO ESTOQUE"
     )
       return alert(
-        "ESTA NOTA JÁ FOI INCORPORADA AO ESTOQUE. A DUPLICIDADE FOI BLOQUEADA.",
+        "ESTA NOTA JÁ FOI DESTINADA OU INCORPORADA. A ENTRADA DUPLICADA NO ESTOQUE FOI BLOQUEADA.",
       );
     const cargaId = links[n.id] || n.cargaId || sugerida(n)?.id || "",
       carga = cargas.find((c) => c.id === cargaId),
