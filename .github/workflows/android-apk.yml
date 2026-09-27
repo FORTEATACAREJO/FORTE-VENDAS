@@ -18,6 +18,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Prepare official launcher icon
+        run: |
+          mkdir -p android-apk/app/src/main/res/drawable
+          cp apps/web/public/icons/icon-512.png android-apk/app/src/main/res/drawable/app_icon.png
+
       - name: Build installable APK
         working-directory: android-apk
         run: gradle :app:assembleDebug --no-daemon
