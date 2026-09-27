@@ -1,0 +1,22 @@
+name: Android Forte Financeiro APK
+on:
+  push:
+    branches: [main]
+    paths: ['android-financeiro/**', '.github/workflows/android-financeiro-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.7'}
+      - working-directory: android-financeiro
+        run: gradle :app:assembleDebug --no-daemon
+      - run: cp android-financeiro/app/build/outputs/apk/debug/app-debug.apk ForteFinanceiro.apk
+      - uses: ncipollo/release-action@v1
+        with: {tag: android-financeiro-latest, name: 'Forte Financeiro Android', artifacts: 'ForteFinanceiro.apk', allowUpdates: true, replacesArtifacts: true, makeLatest: false}
