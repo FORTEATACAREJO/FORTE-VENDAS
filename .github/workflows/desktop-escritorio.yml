@@ -1,0 +1,33 @@
+name: Desktop Escritório Windows
+on: {workflow_dispatch: {}, push: {branches: [main], paths: ['desktop-escritorio/**','.github/workflows/desktop-escritorio.yml']}}
+permissions: {contents: write}
+jobs:
+ build:
+  runs-on: windows-latest
+  steps:
+   - uses: actions/checkout@v4
+   - uses: actions/setup-node@v4
+     with: {node-version: '20'}
+   - working-directory: desktop-escritorio
+     run: npm install
+   - name: Build three Windows installers
+     shell: pwsh
+     working-directory: desktop-escritorio
+     run: |
+      $apps = @(
+       @{Name='Forte Vendas'; File='ForteVendas'; Url='https://forte-vendas.onrender.com'; Icon='../apps/web/public/icons/icon-512.png'},
+       @{Name='Forte Fiscal'; File='ForteFiscal'; Url='https://forte-fiscal.onrender.com'; Icon='forte-fiscal.png'},
+       @{Name='Forte Frete'; File='ForteFrete'; Url='https://forte-frete.onrender.com'; Icon='forte-frete.png'}
+      )
+      Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FORTEATACAREJO/FORTEFISCAL/main/public/icons/fortefiscal-512.png' -OutFile 'forte-fiscal.png'
+      Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FORTEATACAREJO/FORTE-FRETE/main/favicon.svg' -OutFile 'forte-frete.svg'
+      magick -background none forte-frete.svg -resize 512x512 forte-frete.png
+      foreach($a in $apps){
+       @{name=$a.Name;url=$a.Url}|ConvertTo-Json|Set-Content app-config.json
+       npx electron-builder --win nsis --x64 --config.directories.output="dist-$($a.File)" --config.productName="$($a.Name)" --config.win.icon="$($a.Icon)" --config.nsis.oneClick=false --config.nsis.allowToChangeInstallationDirectory=true --config.nsis.createDesktopShortcut=true --config.nsis.createStartMenuShortcut=true --config.artifactName="$($a.File)-Setup.exe"
+      }
+   - shell: pwsh
+     working-directory: desktop-escritorio
+     run: Copy-Item dist-ForteVendas/ForteVendas-Setup.exe,dist-ForteFiscal/ForteFiscal-Setup.exe,dist-ForteFrete/ForteFrete-Setup.exe .
+   - uses: ncipollo/release-action@v1
+     with: {tag: escritorio-windows-latest, name: 'ESCRITÓRIO — Windows', artifacts: 'desktop-escritorio/ForteVendas-Setup.exe,desktop-escritorio/ForteFiscal-Setup.exe,desktop-escritorio/ForteFrete-Setup.exe', allowUpdates: true, replacesArtifacts: true, makeLatest: false}
