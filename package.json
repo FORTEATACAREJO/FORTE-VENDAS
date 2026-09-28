@@ -1,7 +1,7 @@
 {
   "name": "forte-vendas-v6-8-5",
   "private": true,
-  "version": "6.8.5",
+  "version": "6.9.0",
   "workspaces": [
     "apps/web",
     "packages/core"
