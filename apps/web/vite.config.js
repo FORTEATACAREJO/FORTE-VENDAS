@@ -1,3 +1,4 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({plugins:[react()],server:{port:5178,strictPort:true}});
+import { resolve } from "node:path";
+export default defineConfig({plugins:[react()],server:{port:5178,strictPort:true},build:{rollupOptions:{input:{vendas:resolve(__dirname,"index.html"),financeiro:resolve(__dirname,"financeiro.html")}}}});
