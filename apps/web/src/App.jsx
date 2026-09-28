@@ -592,8 +592,8 @@ const MODULES = [
   [
     "itau",
     "12",
-    "BANCO ITAÚ",
-    "Boletos, CNAB, movimentações, liquidações e francesinha.",
+    "COBRANÇAS ITAÚ",
+    "Boletos de clientes, vencidos, correções, reenvios e ocorrências.",
   ],
   ["paletes", "13", "PALETES", "Conta-corrente de paletes e movimentações."],
   ["estoque", "14", "ESTOQUE", "Conta-corrente, saldo e custo ponderado."],
@@ -663,6 +663,12 @@ const MODULE_GROUPS = [
     modules: ["financeiro", "painelVendas", "painelBalcao", "preConferencia", "contasPagar", "contasReceber", "itau", "infinitePay", "saude"],
   },
   {
+    id: "cobrancas",
+    title: "COBRANÇAS ITAÚ",
+    subtitle: "Atendimento de boletos de clientes sem acesso ao financeiro completo.",
+    modules: ["itau"],
+  },
+  {
     id: "fornecedores",
     title: "FORNECEDORES E SUPRIMENTOS",
     subtitle: "Marcas, pedidos, condições comerciais e abastecimento.",
@@ -705,6 +711,7 @@ const PERFIL_PERMS = {
     "CLIENTE/CARGA DIRETA",
     "VENDA BALCÃO",
     "PAINEL DE CARGAS",
+    "COBRANÇAS ITAÚ",
     "RELATÓRIOS",
   ],
   "VENDEDOR EXTERNO": ["VENDAS EXTERNAS", "RELATÓRIOS"],
@@ -811,13 +818,14 @@ export default function App() {
   const isMaster = !!currentUser?.master;
   const permissionKeyByGroup = {
     vendas: "VENDAS E COMPRAS", logistica: "LOGÍSTICA E OPERAÇÃO",
-    conferencia: "CONFERÊNCIA E IA", financeiro: "FINANCEIRO",
+    conferencia: "CONFERÊNCIA E IA", financeiro: "FINANCEIRO", cobrancas: "COBRANÇAS ITAÚ",
     fornecedores: "FORNECEDORES E SUPRIMENTOS", cadastros: "CADASTROS",
     relatorios: "RELATÓRIOS", patio: "PÁTIO / ESTOQUE", integracoes: "INTEGRAÇÕES",
   };
   const groupForTab = (screen) => {
     if (["estoque", "paletes"].includes(screen)) return "patio";
     if (["gmail", "integracoes", "integracoesFinanceiras"].includes(screen)) return "integracoes";
+    if (screen === "itau") return "cobrancas";
     return MODULE_GROUPS.find((g) => g.modules.includes(screen))?.id || "";
   };
   const canAccessGroup = (groupId, action = "visualizar") => {
@@ -832,7 +840,7 @@ export default function App() {
     return !!rule[action] || (action !== "visualizar" && !!rule.editar);
   };
   const canAccessTab = (screen, action = "visualizar") => canAccessGroup(groupForTab(screen), action);
-  const visibleModuleGroups = MODULE_GROUPS.filter((g) => canAccessGroup(g.id));
+  const visibleModuleGroups = MODULE_GROUPS.filter((g) => g.id !== "financeiro" && canAccessGroup(g.id));
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
     if (tab !== "home" && requestedGroup && !canAccessGroup(requestedGroup))
@@ -2099,7 +2107,8 @@ export default function App() {
     .filter((c) => c.status !== "CANCELADA")
     .slice()
     .reverse();
-  if(new URLSearchParams(window.location.search).get("app")==="financeiro") {
+  const financeiroStandalone = window.location.pathname.endsWith("/financeiro.html") || new URLSearchParams(window.location.search).get("app")==="financeiro";
+  if(financeiroStandalone) {
     if(!canAccessGroup("financeiro"))return <main className="main"><h1>ACESSO AO FINANCEIRO NÃO AUTORIZADO</h1><a href="/">VOLTAR AO FORTE VENDAS</a></main>;
     return <FinanceiroHub data={data} onChange={setData} currentUser={currentUser}/>;
   }
@@ -2135,12 +2144,12 @@ export default function App() {
         >
           ✓ CONFERÊNCIA / IA
         </button>}
-        {canAccessGroup("financeiro") && (
+        {canAccessGroup("cobrancas") && (
           <button
-            className={tab === "group:financeiro" ? "sideActive" : ""}
-            onClick={() => setTab("group:financeiro")}
+            className={tab === "group:cobrancas" ? "sideActive" : ""}
+            onClick={() => setTab("group:cobrancas")}
           >
-            $ FINANCEIRO
+            $ COBRANÇAS ITAÚ
           </button>
         )}
         {canAccessGroup("fornecedores") && <button
@@ -2184,7 +2193,7 @@ export default function App() {
           <div>
             <h1>FORTE VENDAS</h1>
             <small>FORTE ATACAREJO — CONTROLE OPERACIONAL + IA</small>
-            {canAccessGroup("financeiro")&&<p><a href="/?app=financeiro" className="secondary">▣ ABRIR FORTE FINANCEIRO</a></p>}
+            {canAccessGroup("financeiro")&&<p><a href="/financeiro.html" className="secondary">▣ ABRIR FORTE FINANCEIRO</a></p>}
           </div>
           <div className="globalSearchWrap">
             <input
@@ -3241,10 +3250,9 @@ export default function App() {
         )}
         {tab === "itau" && (
           <section className="card">
-            <div className="sectionHead"><div><h2>BANCO ITAÚ</h2><p>CENTRAL EXCLUSIVA DE COBRANÇA: BOLETOS, CNAB, MOVIMENTAÇÕES, LIQUIDAÇÕES, BAIXAS E FRANCESINHA.</p></div></div>
+            <div className="sectionHead"><div><h2>COBRANÇAS ITAÚ</h2><p>BOLETOS DE CLIENTES, VENCIDOS, CORREÇÕES, REEMISSÕES, REENVIOS E OCORRÊNCIAS. SEM ACESSO A SALDOS, DRE OU PAGAMENTOS A FORNECEDORES.</p></div><button onClick={() => setModal({ type: "emissorBoletos", canal: "COBRANÇA ITAÚ" })}>EMITIR / CORRIGIR BOLETO</button></div>
             <RecebiveisItau data={data} onChange={setData} />
             <FrancesinhaItau data={data} />
-            <ItauPagamentos data={data} onChange={setData} currentUser={currentUser} />
           </section>
         )}
         {tab === "infinitePay" && <InfinitePay data={data} onChange={setData} currentUser={currentUser} />}
@@ -10073,6 +10081,16 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
   const vendasExistentes = (carga.vendaIds || [])
     .map((id) => (data.vendas || []).find((v) => v.id === id))
     .filter(Boolean);
+  const precoAutorizado = (clienteId, produtoId) => {
+    const produto = (data.produtos || []).find((p) => p.id === produtoId);
+    const regra = (data.precosClientes || []).find(
+      (r) => r.clienteId === clienteId && r.produtoId === produtoId,
+    );
+    const tabela = Number(produto?.precoTabela || 0);
+    const desconto = Number(regra?.descontoPct || 0);
+    return { tabela, desconto, final: tabela * (1 - desconto / 100) };
+  };
+  const precoLinha = precoAutorizado(linha.clienteId, linha.produtoId);
   const qtdBaseProduto = (pid) => {
     if (itensNota.length) return itensNota.filter(i=>i.produtoId===pid).reduce((sum,i)=>sum+i.qtd,0);
     if (carga.produtoId === pid && Number(carga.qtd || 0) > 0)
@@ -10088,6 +10106,8 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       q = Number(linha.qtd || 0);
     if (!cli || !p || q <= 0)
       return alert("SELECIONE CLIENTE, PRODUTO E QUANTIDADE.");
+    if (!(precoLinha.final > 0))
+      return alert("PRODUTO SEM PREÇO DE TABELA VÁLIDO. SOLICITE AO ADMIN/MASTER.");
     const ja = linhas
       .filter((x) => x.produtoId === p.id)
       .reduce((a, x) => a + Number(x.qtd || 0), 0);
@@ -10121,7 +10141,9 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
         produto: p.nome,
         marca: p.marca,
         qtd: q,
-        preco: Number(linha.preco || 0),
+        precoTabela: precoLinha.tabela,
+        descontoPct: precoLinha.desconto,
+        preco: precoLinha.final,
         pesoKg: q * Number(p.pesoKg || 0),
         destino: upper(linha.destino || cli.cidade),
         condicaoPagamento:
@@ -10421,15 +10443,11 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
               onChange={(e) => setLinha((x) => ({ ...x, qtd: e.target.value }))}
             />
           </Field>
-          <Field label="PREÇO DE VENDA UNITÁRIO">
-            <input
-              type="number"
-              step="0.01"
-              value={linha.preco}
-              onChange={(e) =>
-                setLinha((x) => ({ ...x, preco: e.target.value }))
-              }
-            />
+          <Field label="PREÇO AUTORIZADO CLIENTE × PRODUTO">
+            <input disabled value={money(precoLinha.final)} />
+            <small>
+              TABELA {money(precoLinha.tabela)} • DESCONTO {precoLinha.desconto}%
+            </small>
           </Field>
           <Field label="DESTINO / OBRA">
             <UpperInput
@@ -10877,6 +10895,39 @@ function CadModal({
     validade: "",
     observacoes: "",
   });
+  const produtosAtivos = (data.produtos || []).filter((p) => p.ativo !== false);
+  const regrasPrecoCliente = (data.precosClientes || []).filter(
+    (r) => r.clienteId === edit,
+  );
+  function alterarDescontoClienteProduto(produto, valor) {
+    if (!isAdmin) return alert("SOMENTE ADMIN/MASTER PODE ALTERAR PREÇOS DO CLIENTE.");
+    const descontoPct = Math.max(0, Math.min(100, Number(valor || 0)));
+    onChange((d) => {
+      const atual = (d.precosClientes || []).find(
+        (r) => r.clienteId === edit && r.produtoId === produto.id,
+      );
+      const registro = {
+        ...(atual || {}), id: atual?.id || uid("pcp"), clienteId: edit,
+        produtoId: produto.id, precoTabela: Number(produto.precoTabela || 0),
+        descontoPct, atualizadoEm: nowISO(),
+      };
+      return {
+        ...d,
+        precosClientes: [
+          ...(d.precosClientes || []).filter(
+            (r) => !(r.clienteId === edit && r.produtoId === produto.id),
+          ),
+          registro,
+        ],
+        auditoria: [...(d.auditoria || []), {
+          id: uid("aud"), acao: "ALTERAÇÃO DE PREÇO CLIENTE × PRODUTO",
+          referencia: edit,
+          detalhes: `${f.nome || "CLIENTE"} • ${produto.nome} • DESCONTO ${Number(atual?.descontoPct || 0)}% → ${descontoPct}%`,
+          dataHora: nowISO(),
+        }],
+      };
+    });
+  }
   const filtered = list.filter(
     (x) =>
       !norm(search) ||
@@ -11105,6 +11156,17 @@ function CadModal({
     onChange((d) => ({
       ...d,
       [type]: next,
+      precosClientes:
+        type === "clientes" && edit === "new"
+          ? [
+              ...(d.precosClientes || []),
+              ...(d.produtos || []).filter((p) => p.ativo !== false).map((p) => ({
+                id: uid("pcp"), clienteId: newId, produtoId: p.id,
+                precoTabela: Number(p.precoTabela || 0), descontoPct: 0,
+                atualizadoEm: nowISO(),
+              })),
+            ]
+          : d.precosClientes || [],
       auditoria: trocaVendedor
         ? [
             ...(d.auditoria || []),
@@ -11532,6 +11594,24 @@ function CadModal({
               </Field>
             ))}
           </div>
+          {type === "clientes" && edit !== "new" && (
+            <div className="transportBox">
+              <h3>PRODUTOS E PREÇOS DO CLIENTE</h3>
+              <p className="note">O preço final é calculado pela tabela vigente. Somente ADMIN/MASTER pode alterar o desconto.</p>
+              <div className="cadList">
+                {produtosAtivos.map((produto) => {
+                  const regra = regrasPrecoCliente.find((r) => r.produtoId === produto.id);
+                  const tabela = Number(produto.precoTabela || 0);
+                  const desconto = Number(regra?.descontoPct || 0);
+                  const final = tabela * (1 - desconto / 100);
+                  return <div className="cadRow" key={produto.id}>
+                    <div><b>{produto.marca ? `${produto.marca} • ` : ""}{produto.nome}</b><small>TABELA {money(tabela)} • DESCONTO {desconto}% • PREÇO FINAL {money(final)}</small></div>
+                    <label>DESCONTO %<input type="number" min="0" max="100" step="0.01" disabled={!isAdmin} value={desconto} onChange={(e) => alterarDescontoClienteProduto(produto, e.target.value)} /></label>
+                  </div>;
+                })}
+              </div>
+            </div>
+          )}
           {type === "clientes" && (
             <div className="transportBox">
               <h3>OBRAS / DESTINOS DO CLIENTE</h3>
