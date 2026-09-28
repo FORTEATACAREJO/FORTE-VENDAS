@@ -57,6 +57,7 @@ const ARRAYS = [
   "infinitePayTransacoes",
   "infinitePayTransferencias",
   "ofertasCargas",
+  "comprasFornecedor",
   "motoristaDocumentos",
   "motoristaEventos",
 ];
@@ -178,7 +179,7 @@ function normalize(saved, fallback) {
   base.settings.nextVendaSeq = vendaSeq;
   base.settings.nextOrcamentoSeq = orcSeq;
   // A versão acompanha o pacote instalado; dados antigos não podem rebaixar a identificação visual.
-  base.settings.versaoHomologacao = "6.7.0";
+  base.settings.versaoHomologacao = "6.9.0";
   base.settings.migracaoNumeracaoV632 = true;
   return base;
 }

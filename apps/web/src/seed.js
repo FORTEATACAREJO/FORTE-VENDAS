@@ -3,7 +3,7 @@ export const seed = {
     nextCargaSeq: 7,
     nextVendaSeq: 7,
     nextOrcamentoSeq: 2,
-    versaoHomologacao: "6.8.5",
+    versaoHomologacao: "6.9.0",
     gmailAutoSync: true,
     gmailIntervaloMinutos: 10,
     sefazEndpointSeguro: "http://127.0.0.1:4783/api/sefaz/distribuicao",
@@ -39,6 +39,7 @@ export const seed = {
     },
   ],
   bankEvents: [],
+  comprasFornecedor: [],
   cobrancaEnvios: [],
   usuarios: [
     {

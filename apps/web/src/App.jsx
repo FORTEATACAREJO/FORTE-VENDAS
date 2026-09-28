@@ -8,6 +8,7 @@ import ItauPagamentos from "./ItauPagamentos.jsx";
 import InfinitePay from "./InfinitePay.jsx";
 import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
+import { UnifiedSalesPanel, SupplierPurchasesPanel, LoadingOrdersPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
 import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -534,6 +535,7 @@ const CARGOS = [
   "CONSULTA",
 ];
 const MODULES = [
+  ["painelUnicoVendas", "0", "PAINEL ÚNICO DE VENDAS", "Entrada central VX/VR e roteamento autorizado para Balcão ou Carga Direta."],
   ["clientes", "1", "CARGA DIRETA", "Venda/carga direta com destino definido."],
   ["diretas", "1A", "PAINEL VENDAS DIRETAS", "Nota fiscal, documentos e distribuição por cliente."],
   ["balcao", "2", "VENDA BALCÃO", "Vendas no balcão, entrega, frete e caixa."],
@@ -615,6 +617,9 @@ const MODULES = [
     "COMPRA FORTE",
     "Reposição de estoque e cargas mistas.",
   ],
+  ["comprasFornecedor", "15A", "COMPRA AO FORNECEDOR", "Pedido, capacidade, motorista, envio e ordem de carregamento."],
+  ["painelCompras", "15B", "PAINEL DE COMPRAS", "NF-e SEFAZ, CNPJ, estoque fiscal e destinação."],
+  ["ordensCarregamento", "15C", "ORDENS DE CARREGAMENTO", "Operação sem informações financeiras."],
   [
     "planejamento",
     "16",
@@ -634,11 +639,15 @@ const MODULE_GROUPS = [
     title: "VENDAS E COMPRAS",
     subtitle: "Pedidos, vendas, compras e planejamento comercial.",
     modules: [
+      "painelUnicoVendas",
       "clientes",
       "diretas",
       "balcao",
       "externas",
       "compraForte",
+      "comprasFornecedor",
+      "painelCompras",
+      "ordensCarregamento",
       "planejamento",
       "todasCargas",
     ],
@@ -1127,6 +1136,10 @@ export default function App() {
               atualizadoEm: nowISO(),
               status: "PENDENTE",
               numeroVenda,
+              origemComercial: upper(currentUser?.cargo || currentUser?.perfil).includes("EXTERNO") ? "VX" : "VR",
+              vendedorId: currentUser?.id || "",
+              vendedorNome: currentUser?.nome || "USUÁRIO",
+              destinoPainel: "AGUARDANDO ROTEAMENTO",
             };
           }),
         ],
@@ -2184,7 +2197,7 @@ export default function App() {
         </button>}
         <div className="sideVersion">
           <small>VERSÃO</small>
-          <b>V6.8.3</b>
+          <b>V6.9.0</b>
           <span>● Online</span>
         </div>
       </aside>
@@ -3113,7 +3126,13 @@ export default function App() {
             currentUser={currentUser}
           />
         )}
-        {tab === "diretas" && <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>}
+        {tab === "diretas" && (
+          <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
+        )}
+        {tab === "painelUnicoVendas" && <UnifiedSalesPanel data={data} onChange={setData} currentUser={currentUser} canRoute={canAccessTab("painelUnicoVendas", "editar")} onNavigate={setTab} />}
+        {tab === "comprasFornecedor" && <SupplierPurchasesPanel data={data} onChange={setData} currentUser={currentUser} onNavigate={setTab} />}
+        {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
+        {tab === "ordensCarregamento" && <LoadingOrdersPanel data={data} onNavigate={setTab} />}
         {tab === "todasCargas" && (
           <TodasCargas
             data={data}
