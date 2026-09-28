@@ -9,6 +9,7 @@ import InfinitePay from "./InfinitePay.jsx";
 import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
 import { UnifiedSalesPanel, SupplierPurchasesPanel, LoadingOrdersPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
+import SefazAutoSync from "./SefazAutoSync.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
 import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -2127,6 +2128,7 @@ export default function App() {
   }
   return (
     <div className="app">
+      <SefazAutoSync data={data} onChange={setData} currentUser={currentUser} />
       <aside className="sideNav">
         <div className="sideBrand">
           <b>FORTE VENDAS</b>
@@ -9619,12 +9621,8 @@ DESEJA DAR ENTRADA DESTES PALLETS NO ESTOQUE / GALPÃO DA FORTE ATACAREJO?`);
             PEDIDO, OS, FORNECEDOR OU PRODUTO.
           </p>
         </div>
-        <button className="secondary" onClick={consultarSefaz}>
-          CONSULTAR SEFAZ — MATRIZ + FILIAL
-        </button>
-        <span className="mobileSefazNotice">
-          CERTIFICADO DIGITAL: CONSULTA E DOWNLOAD SOMENTE NO DESKTOP.
-        </span>
+        <span className="secondary">SEFAZ AUTOMÁTICA — MATRIZ + FILIAL</span>
+        <span className="mobileSefazNotice">ÚLTIMA CONSULTA: {data.settings?.ultimaConsultaSefaz ? new Date(data.settings.ultimaConsultaSefaz).toLocaleString("pt-BR") : "AGUARDANDO PRIMEIRA EXECUÇÃO"}</span>
         <label className="secondary">
           IMPORTAR XML MANUALMENTE{" "}
           <input
@@ -12995,8 +12993,9 @@ function Integracoes({ data, onChange, onClose, audit }) {
       <div className="transportBox">
         <h3>SEFAZ — DISTRIBUIÇÃO DF-E DA MATRIZ E FILIAL</h3>
         <p>
-          CONSULTA OS DOIS CNPJS POR SERVIÇO SEGURO, MANTÉM O NSU DE CADA
-          ESTABELECIMENTO E BLOQUEIA DUPLICIDADE PELA CHAVE DA NF-E. O
+          RECEBIMENTO AUTOMÁTICO A CADA 10 MINUTOS NOS DOIS CNPJS, POR SERVIÇO
+          SEGURO. MANTÉM O NSU DE CADA ESTABELECIMENTO E BLOQUEIA DUPLICIDADE
+          PELA CHAVE DA NF-E. O
           O CERTIFICADO A1 É VALIDADO PELO SERVIÇO LOCAL DO DESKTOP E GUARDADO
           CRIPTOGRAFADO FORA DO NAVEGADOR. A SENHA NÃO É SALVA NOS DADOS DA TELA.
         </p>
@@ -13037,6 +13036,9 @@ function Integracoes({ data, onChange, onClose, audit }) {
                   : "NUNCA"
               }
             />
+          </Field>
+          <Field label="STATUS DA AUTOMAÇÃO">
+            <input readOnly value={data.settings?.sefazAutoStatus || "ATIVA — AGUARDANDO PRIMEIRA EXECUÇÃO"} />
           </Field>
         </div>
       </div>

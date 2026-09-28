@@ -8,6 +8,8 @@ export const seed = {
     gmailIntervaloMinutos: 10,
     sefazEndpointSeguro: "http://127.0.0.1:4783/api/sefaz/distribuicao",
     sefazAmbiente: "1",
+    sefazAutoSync: true,
+    sefazIntervaloMinutos: 10,
   },
   currentUserId: "usr-admin",
   bankConnections: [
