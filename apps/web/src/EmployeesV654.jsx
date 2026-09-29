@@ -11,9 +11,10 @@ const CARGOS = [
   "FINANCEIRO",
   "MOTORISTA DE ENTREGA",
   "OPERADOR GERAL",
+  "MASTER",
   "ADMINISTRADOR",
 ];
-const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "OPERADOR GERAL", "FINANCEIRO", "ADMINISTRADOR"];
+const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "OPERADOR GERAL", "FINANCEIRO", "MASTER", "ADMINISTRADOR"];
 const UNIDADES = [
   "MATRIZ - MONTE CARMELO/MG",
   "FILIAL - CALDAS NOVAS/GO",
@@ -53,6 +54,7 @@ const appProfile = (perfil) => ({
   FINANCEIRO: "FINANCEIRO",
   VENDAS: "VENDAS",
   "OPERADOR GERAL": "OPERADOR_GERAL",
+  MASTER: "MASTER",
   ADMINISTRADOR: "ADMINISTRADOR",
 }[perfil] || "CONSULTA");
 
@@ -104,7 +106,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       ...old,
       perfil,
       cargo: perfil === "OPERADOR GERAL" ? "OPERADOR GERAL" : old.cargo,
-      permissoes: perfil === "ADMINISTRADOR"
+      permissoes: (perfil === "ADMINISTRADOR" || perfil === "MASTER")
         ? Object.fromEntries(MODULOS.map((module) => [module, { ...full }]))
         : perfil === "OPERADOR GERAL"
           ? operadorGeral
