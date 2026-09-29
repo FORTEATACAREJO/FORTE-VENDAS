@@ -29,5 +29,15 @@ jobs:
    - shell: pwsh
      working-directory: desktop-escritorio
      run: Copy-Item dist-ForteVendas/ForteVendas-Setup.exe,dist-ForteFiscal/ForteFiscal-Setup.exe,dist-ForteFrete/ForteFrete-Setup.exe .
+   - name: Upload Windows installers
+     uses: actions/upload-artifact@v4
+     with:
+      name: Forte-Escritorio-Windows
+      path: |
+       desktop-escritorio/ForteVendas-Setup.exe
+       desktop-escritorio/ForteFiscal-Setup.exe
+       desktop-escritorio/ForteFrete-Setup.exe
+      if-no-files-found: error
+      retention-days: 30
    - uses: ncipollo/release-action@v1
      with: {tag: escritorio-windows-latest, name: 'ESCRITÓRIO — Windows', artifacts: 'desktop-escritorio/ForteVendas-Setup.exe,desktop-escritorio/ForteFiscal-Setup.exe,desktop-escritorio/ForteFrete-Setup.exe', allowUpdates: true, replacesArtifacts: true, makeLatest: false}
