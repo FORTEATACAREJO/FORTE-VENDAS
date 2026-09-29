@@ -10,6 +10,7 @@ import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
 import { UnifiedSalesPanel, SupplierPurchasesPanel, LoadingOrdersPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
 import SefazAutoSync from "./SefazAutoSync.jsx";
+import CloudHealth from "./CloudHealth.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
 import { jsPDF } from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -3068,6 +3069,10 @@ export default function App() {
                     <b>PARAMETRIZAÇÃO FINANCEIRA — MASTER</b>
                     <small>CAIXA • CONTAS A RECEBER • CONCILIAÇÃO</small>
                   </button>
+                  <button onClick={() => setModal({ type: "cloudHealth" })}>
+                    <b>☁ SAÚDE DA NUVEM</b>
+                    <small>SUPABASE • GITHUB • RENDER • ALERTAS 70% / 85% / 95%</small>
+                  </button>
                   <button onClick={() => setModal({ type: "integracoes" })}>
                     <b>INTEGRAÇÕES — GMAIL / WHATSAPP</b>
                     <small>CONEXÃO • SINCRONIZAÇÃO • STATUS</small>
@@ -3377,6 +3382,7 @@ export default function App() {
       {modal?.type === "funcionarios" && (
         <EmployeesV654 data={data} onChange={setData} currentUser={currentUser} onClose={() => setModal(null)} />
       )}{" "}
+      {modal?.type === "cloudHealth" && <CloudHealth onClose={() => setModal(null)} />}{" "}
       {modal?.type === "integracoes" && (
         <Integracoes
           data={data}
