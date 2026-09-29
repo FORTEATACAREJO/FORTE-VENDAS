@@ -180,6 +180,8 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
           unidade: record.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
         }});
         if (error) throw error;
+        if (invite?.error) throw new Error(invite.error);
+        if (invite?.whatsappUrl) window.open(invite.whatsappUrl, "_blank", "noopener,noreferrer");
         setMessage(invite?.message || "CONVITE PREPARADO PARA WHATSAPP. O FUNCIONÁRIO COMPLETARÁ O CADASTRO E CRIARÁ A SENHA.");
       } else setMessage("CADASTRO SALVO LOCALMENTE. CONECTE O SUPABASE PARA ENVIAR O CONVITE.");
       setForm(defaults);
@@ -198,6 +200,8 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
         unidade: employee.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
       }});
       if (error) throw error;
+      if (invite?.error) throw new Error(invite.error);
+      if (invite?.whatsappUrl) window.open(invite.whatsappUrl, "_blank", "noopener,noreferrer");
       onChange((old) => ({ ...old, funcionarios:(old.funcionarios || []).map((x)=>x.id===employee.id?{...x,status:"CONVITE ENVIADO",convidadoEm:new Date().toISOString()}:x) }));
       setMessage(invite?.message || "CONVITE ENVIADO PELO WHATSAPP.");
     } catch (error) { setMessage(`NÃO FOI POSSÍVEL ENVIAR O CONVITE: ${error.message || "FALHA NO SERVIÇO"}. O CADASTRO FOI PRESERVADO.`); }
