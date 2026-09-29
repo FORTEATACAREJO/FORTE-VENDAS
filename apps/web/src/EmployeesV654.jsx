@@ -10,9 +10,10 @@ const CARGOS = [
   "VENDEDOR EXTERNO",
   "FINANCEIRO",
   "MOTORISTA DE ENTREGA",
+  "OPERADOR GERAL",
   "ADMINISTRADOR",
 ];
-const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "FINANCEIRO", "ADMINISTRADOR"];
+const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "OPERADOR GERAL", "FINANCEIRO", "ADMINISTRADOR"];
 const UNIDADES = [
   "MATRIZ - MONTE CARMELO/MG",
   "FILIAL - CALDAS NOVAS/GO",
@@ -51,6 +52,7 @@ const appProfile = (perfil) => ({
   "CONFERÊNCIA": "CONFERENCIA",
   FINANCEIRO: "FINANCEIRO",
   VENDAS: "VENDAS",
+  "OPERADOR GERAL": "OPERADOR_GERAL",
   ADMINISTRADOR: "ADMINISTRADOR",
 }[perfil] || "CONSULTA");
 
@@ -91,13 +93,24 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   ]));
   const setAllPermissions = (value) => patch("permissoes", permissionSet(value));
   const setPermissionColumn = (action, value) => patch("permissoes", permissionSet(value, action));
-  const changeProfile = (perfil) => setForm((old) => ({
-    ...old,
-    perfil,
-    permissoes: perfil === "ADMINISTRADOR"
-      ? Object.fromEntries(MODULOS.map((module) => [module, { visualizar:true, criar:true, editar:true, aprovar:true }]))
-      : old.permissoes,
-  }));
+  const changeProfile = (perfil) => setForm((old) => {
+    const full = { visualizar:true, criar:true, editar:true, aprovar:true };
+    const none = { visualizar:false, criar:false, editar:false, aprovar:false };
+    const operadorGeral = Object.fromEntries(MODULOS.map((module) => [
+      module,
+      module === "FINANCEIRO" ? { ...none } : { ...full },
+    ]));
+    return {
+      ...old,
+      perfil,
+      cargo: perfil === "OPERADOR GERAL" ? "OPERADOR GERAL" : old.cargo,
+      permissoes: perfil === "ADMINISTRADOR"
+        ? Object.fromEntries(MODULOS.map((module) => [module, { ...full }]))
+        : perfil === "OPERADOR GERAL"
+          ? operadorGeral
+          : old.permissoes,
+    };
+  });
 
   async function readDocument() {
     if (!form.documento) return setMessage("ANEXE A CNH OU O DOCUMENTO DE IDENTIFICAÇÃO.");
@@ -289,7 +302,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       <button type="button" className="ghost dark" onClick={()=>setPermissionColumn("editar",true)}>EDITAR TODOS</button>
       <button type="button" className="ghost dark" onClick={()=>setPermissionColumn("aprovar",true)}>APROVAR TODOS</button>
     </div>
-    <div className="permissionMatrix"><b>MÓDULO</b><b>VER</b><b>CRIAR</b><b>EDITAR</b><b>APROVAR</b>{MODULOS.map((module)=><div className="permissionRow" key={module}><strong>{module}</strong>{["visualizar","criar","editar","aprovar"].map((action)=><input key={action} type="checkbox" checked={!!form.permissoes?.[module]?.[action]} onChange={()=>togglePermission(module,action)}/>)}</div>)}</div>
+    <div className="permissionMatrix"><b>MÓDULO</b><b>VER</b><b>CRIAR</b><b>EDITAR</b><b>APROVAR</b>{MODULOS.map((module)=><div className="permissionRow" key={module}><strong>{module}</strong>{["visualizar","criar","editar","aprovar"].map((action)=><input key={action} type="checkbox" disabled={form.perfil === "OPERADOR GERAL" && module === "FINANCEIRO"} checked={!!form.permissoes?.[module]?.[action]} onChange={()=>togglePermission(module,action)}/>)}</div>)}</div>
     {form.alertaDocumento && <div className="alert danger">{form.alertaDocumento}</div>}
     {message && <div className="alert warn">{message}</div>}
     <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
