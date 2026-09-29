@@ -143,9 +143,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     return "";
   }
 
-  async function saveAndInvite() {
+  async function saveAndInvite(sendInvite = true) {
     const invalid = validate(); if (invalid) return setMessage(invalid);
-    setBusy(true); setMessage("SALVANDO CADASTRO E PREPARANDO CONVITE…");
+    setBusy(true); setMessage(sendInvite ? "SALVANDO CADASTRO E PREPARANDO CONVITE…" : "SALVANDO CADASTRO…");
     try {
       let documentoFileId = form.documentoFileId || "";
       if (form.documento) { documentoFileId = `func-${Date.now()}`; await putFile(documentoFileId, form.documento); }
@@ -162,7 +162,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
         whatsapp: onlyDigits(form.whatsapp), documento: undefined, documentoFileId,
         documentoConferido:!!form.documento,
         documentoNome: form.documento?.name || form.documentoNome, documentoPath,
-        status: supabaseConfigured ? "CONVITE EM PROCESSAMENTO" : "AGUARDANDO CONEXÃO COM SUPABASE",
+        status: sendInvite ? (supabaseConfigured ? "CONVITE EM PROCESSAMENTO" : "AGUARDANDO CONEXÃO COM SUPABASE") : (form.status || "PRÉ-CADASTRADO — AGUARDANDO CONVITE"),
         criadoEm: form.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(),
         criadoPor: currentUser?.nome || "ADMINISTRADOR",
       };
@@ -171,7 +171,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
         funcionarios: form.id ? (old.funcionarios || []).map((x) => x.id === id ? record : x) : [...(old.funcionarios || []), record],
         auditoria: [...(old.auditoria || []), { id:`aud-${Date.now()}`, acao: form.id ? "FUNCIONÁRIO ATUALIZADO" : "FUNCIONÁRIO CADASTRADO", detalhe:`${record.nome} • ${record.cargo} • ${record.email}`, usuario:currentUser?.nome, dataHora:new Date().toISOString() }],
       }));
-      if (supabaseConfigured) {
+      if (!sendInvite) {
+        setMessage("CADASTRO SALVO. USE O BOTÃO ENVIAR CONVITE QUANDO QUISER DISPARAR O WHATSAPP.");
+      } else if (supabaseConfigured) {
         const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body: {
           id, nome: record.nome, whatsapp: record.whatsapp,
           cargo: record.cargo, perfil: appProfile(record.perfil), permissoes: record.permissoes,
@@ -182,6 +184,23 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       } else setMessage("CADASTRO SALVO LOCALMENTE. CONECTE O SUPABASE PARA ENVIAR O CONVITE.");
       setForm(defaults);
     } catch (error) { setMessage(`CADASTRO SALVO, MAS O CONVITE NÃO FOI ENVIADO: ${error.message || "FALHA NA FUNÇÃO"}.`); }
+    finally { setBusy(false); }
+  }
+
+  async function sendEmployeeInvite(employee) {
+    if (!employee?.whatsapp || onlyDigits(employee.whatsapp).length < 10) return setMessage("CADASTRO SEM WHATSAPP VÁLIDO. EDITE O FUNCIONÁRIO ANTES DE ENVIAR O CONVITE.");
+    setBusy(true); setMessage(`PREPARANDO CONVITE PARA ${employee.nome}…`);
+    try {
+      if (!supabaseConfigured) throw new Error("SUPABASE NÃO CONFIGURADO");
+      const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body: {
+        id: employee.id, nome: employee.nome, whatsapp: onlyDigits(employee.whatsapp),
+        cargo: employee.cargo, perfil: appProfile(employee.perfil), permissoes: employee.permissoes || {},
+        unidade: employee.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
+      }});
+      if (error) throw error;
+      onChange((old) => ({ ...old, funcionarios:(old.funcionarios || []).map((x)=>x.id===employee.id?{...x,status:"CONVITE ENVIADO",convidadoEm:new Date().toISOString()}:x) }));
+      setMessage(invite?.message || "CONVITE ENVIADO PELO WHATSAPP.");
+    } catch (error) { setMessage(`NÃO FOI POSSÍVEL ENVIAR O CONVITE: ${error.message || "FALHA NO SERVIÇO"}. O CADASTRO FOI PRESERVADO.`); }
     finally { setBusy(false); }
   }
 
@@ -298,8 +317,8 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     <div className="permissionMatrix"><b>MÓDULO</b><b>VER</b><b>CRIAR</b><b>EDITAR</b><b>APROVAR</b>{MODULOS.map((module)=><div className="permissionRow" key={module}><strong>{module}</strong>{["visualizar","criar","editar","aprovar"].map((action)=><input key={action} type="checkbox" disabled={form.perfil === "OPERADOR GERAL" && module === "FINANCEIRO"} checked={!!form.permissoes?.[module]?.[action]} onChange={()=>togglePermission(module,action)}/>)}</div>)}</div>
     {form.alertaDocumento && <div className="alert danger">{form.alertaDocumento}</div>}
     {message && <div className="alert warn">{message}</div>}
-    <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
+    <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button className="ghost dark" disabled={busy} onClick={()=>saveAndInvite(false)}>{busy ? "SALVANDO…" : "SALVAR"}</button><button disabled={busy} onClick={()=>saveAndInvite(true)}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
     <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, WHATSAPP OU FUNÇÃO"/></div>
-    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button><button className="dangerBtn" disabled={busy} onClick={()=>deleteEmployee(employee)}>EXCLUIR</button></div></div>)}</div>
+    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions" style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}><button className="ghost dark" style={{padding:"6px 9px",fontSize:11}} onClick={()=>editEmployee(employee)}>EDITAR</button><button style={{padding:"6px 9px",fontSize:11}} disabled={busy || employee.ativo === false} onClick={()=>sendEmployeeInvite(employee)}>ENVIAR CONVITE</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} style={{padding:"6px 9px",fontSize:11}} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button><button className="dangerBtn" style={{padding:"6px 9px",fontSize:11}} disabled={busy} onClick={()=>deleteEmployee(employee)}>EXCLUIR</button></div></div>)}</div>
   </section></div>;
 }
