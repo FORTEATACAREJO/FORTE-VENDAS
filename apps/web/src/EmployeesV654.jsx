@@ -184,13 +184,14 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       if (mastersAtivos.length <= 1) return setMessage("O ÚLTIMO MASTER ATIVO NÃO PODE SER EXCLUÍDO.");
     }
     if (!confirm(`EXCLUIR DEFINITIVAMENTE O CADASTRO DE ${employee.nome}?\n\nESTA OPERAÇÃO REMOVE O CADASTRO DUPLICADO E, QUANDO EXISTIR, O ACESSO CORRESPONDENTE NO SUPABASE/AUTH. ESTA AÇÃO NÃO PODE SER DESFEITA.`)) return;
-    const confirmacao = (prompt(`PARA CONFIRMAR, DIGITE EXCLUIR:`) || "").trim().toUpperCase();
-    if (confirmacao !== "EXCLUIR") return setMessage("EXCLUSÃO CANCELADA: CONFIRMAÇÃO NÃO INFORMADA.");
+    const senhaAutorizacao = prompt(`AUTENTICAÇÃO NECESSÁRIA — ${isMaster ? "MASTER" : "ADMIN"}\n\nINFORME A SUA SENHA PARA AUTORIZAR A EXCLUSÃO DEFINITIVA:`) || "";
+    if (!senhaAutorizacao) return setMessage("EXCLUSÃO CANCELADA: AUTENTICAÇÃO NÃO INFORMADA.");
     setBusy(true); setMessage("EXCLUINDO CADASTRO…");
     try {
       if (supabaseConfigured) {
         const { data: result, error } = await supabase.functions.invoke("delete-employee", { body: {
           employeeId: employee.id, cpf: onlyDigits(employee.cpf), email: String(employee.email || "").trim().toLowerCase(),
+          authorizationPassword: senhaAutorizacao,
         }});
         if (error) throw error;
         if (result?.error) throw new Error(result.error);
