@@ -59,6 +59,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [authorizationPassword, setAuthorizationPassword] = useState("");
+  const [showAuthorizationPassword, setShowAuthorizationPassword] = useState(false);
   const isAdmin = !!currentUser?.admin;
   const isMaster = !!currentUser?.master;
   const employees = data.funcionarios || [];
@@ -173,7 +176,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
 
   function editEmployee(employee) { setForm({ ...defaults, ...employee, documento: null }); setMessage(""); }
 
-  async function deleteEmployee(employee) {
+  function deleteEmployee(employee) {
     if (!isAdmin && !isMaster) return setMessage("SOMENTE ADMIN OU MASTER PODE EXCLUIR UM CADASTRO.");
     if (employee.perfil === "MASTER" && !isMaster) return setMessage("SOMENTE MASTER PODE EXCLUIR OUTRO MASTER.");
     const sameCpf = onlyDigits(employee.cpf) && onlyDigits(employee.cpf) === onlyDigits(currentUser?.cpf);
@@ -183,15 +186,21 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       const mastersAtivos = employees.filter((x) => x.perfil === "MASTER" && x.ativo !== false);
       if (mastersAtivos.length <= 1) return setMessage("O ÚLTIMO MASTER ATIVO NÃO PODE SER EXCLUÍDO.");
     }
-    if (!confirm(`EXCLUIR DEFINITIVAMENTE O CADASTRO DE ${employee.nome}?\n\nESTA OPERAÇÃO REMOVE O CADASTRO DUPLICADO E, QUANDO EXISTIR, O ACESSO CORRESPONDENTE NO SUPABASE/AUTH. ESTA AÇÃO NÃO PODE SER DESFEITA.`)) return;
-    const senhaAutorizacao = prompt(`AUTENTICAÇÃO NECESSÁRIA — ${isMaster ? "MASTER" : "ADMIN"}\n\nINFORME A SUA SENHA PARA AUTORIZAR A EXCLUSÃO DEFINITIVA:`) || "";
-    if (!senhaAutorizacao) return setMessage("EXCLUSÃO CANCELADA: AUTENTICAÇÃO NÃO INFORMADA.");
-    setBusy(true); setMessage("EXCLUINDO CADASTRO…");
+    setAuthorizationPassword("");
+    setShowAuthorizationPassword(false);
+    setDeleteTarget(employee);
+  }
+
+  async function confirmDeleteEmployee() {
+    const employee = deleteTarget;
+    if (!employee) return;
+    if (!authorizationPassword) return setMessage("INFORME A SENHA DO ADMIN/MASTER PARA AUTORIZAR A EXCLUSÃO.");
+    setBusy(true); setMessage("VALIDANDO AUTORIZAÇÃO E EXCLUINDO CADASTRO…");
     try {
       if (supabaseConfigured) {
         const { data: result, error } = await supabase.functions.invoke("delete-employee", { body: {
           employeeId: employee.id, cpf: onlyDigits(employee.cpf), email: String(employee.email || "").trim().toLowerCase(),
-          authorizationPassword: senhaAutorizacao,
+          authorizationPassword,
         }});
         if (error) throw error;
         if (result?.error) throw new Error(result.error);
@@ -201,8 +210,13 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
         auditoria:[...(old.auditoria || []), {id:`aud-${Date.now()}`, acao:"CADASTRO DE FUNCIONÁRIO EXCLUÍDO", detalhe:`${employee.nome} • cadastro duplicado/removido definitivamente`, usuario:currentUser?.nome || "ADMINISTRADOR", dataHora:new Date().toISOString()}],
       }));
       if (form.id === employee.id) setForm(defaults);
+      setDeleteTarget(null);
+      setAuthorizationPassword("");
+      setShowAuthorizationPassword(false);
       setMessage("CADASTRO EXCLUÍDO DEFINITIVAMENTE.");
     } catch (error) {
+      setAuthorizationPassword("");
+      setShowAuthorizationPassword(false);
       setMessage(`NÃO FOI POSSÍVEL EXCLUIR: ${error.message || "FALHA NO SERVIÇO"}.`);
     } finally { setBusy(false); }
   }
@@ -225,6 +239,32 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   return <div className="modalBackdrop"><section className="modal employeeModal">
+    {deleteTarget && <div className="modalBackdrop" style={{zIndex:9999}}>
+      <section className="modal" style={{maxWidth:560}}>
+        <div className="modalHead"><div><h2>AUTORIZAR EXCLUSÃO</h2><p>EXCLUIR DEFINITIVAMENTE O CADASTRO DE {deleteTarget.nome}?</p></div></div>
+        <div className="note">A exclusão exige reautenticação do ADMIN/MASTER. A senha não será armazenada.</div>
+        <label className="field">SENHA DO ADMIN/MASTER
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input
+              type={showAuthorizationPassword ? "text" : "password"}
+              value={authorizationPassword}
+              onChange={(e)=>setAuthorizationPassword(e.target.value)}
+              autoComplete="new-password"
+              autoFocus
+              onKeyDown={(e)=>{ if(e.key==="Enter") confirmDeleteEmployee(); }}
+              style={{flex:1}}
+            />
+            <button type="button" className="ghost dark" aria-label={showAuthorizationPassword ? "Ocultar senha" : "Mostrar senha"} onClick={()=>setShowAuthorizationPassword((v)=>!v)}>
+              {showAuthorizationPassword ? "🙈" : "👁"}
+            </button>
+          </div>
+        </label>
+        <div className="modalActions">
+          <button type="button" className="ghost dark" onClick={()=>{setDeleteTarget(null);setAuthorizationPassword("");setShowAuthorizationPassword(false);}}>CANCELAR</button>
+          <button type="button" className="dangerBtn" disabled={busy || !authorizationPassword} onClick={confirmDeleteEmployee}>{busy ? "VALIDANDO…" : "AUTORIZAR E EXCLUIR"}</button>
+        </div>
+      </section>
+    </div>}
     <div className="modalHead"><div><h2>FUNCIONÁRIOS E PERMISSÕES</h2><p>CADASTRO ADMINISTRADO EXCLUSIVAMENTE POR ADMIN OU MASTER.</p></div><button className="ghost dark" onClick={onClose}>FECHAR</button></div>
     <div className="employeeWorkflow"><b>1. ANEXAR DOCUMENTO</b><span>2. IA PREENCHE</span><span>3. ADMIN CONFERE PERMISSÕES</span><span>4. CONVITE POR E-MAIL</span></div>
     <div className="employeeForm">
