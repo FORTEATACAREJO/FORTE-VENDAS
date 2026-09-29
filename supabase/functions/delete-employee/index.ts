@@ -23,6 +23,13 @@ Deno.serve(async (request)=>{
     if(!callerProfile.data?.ativo||!["ADMINISTRADOR","ADMIN","MASTER"].includes(role)) return reply(origin,403,{error:"SOMENTE ADMIN OU MASTER PODE EXCLUIR CADASTROS."});
 
     const body=await request.json();
+    const authorizationPassword=String(body.authorizationPassword||"");
+    if(!authorizationPassword) return reply(origin,401,{error:"INFORME A SENHA DO ADMIN/MASTER PARA AUTORIZAR A EXCLUSÃO."});
+    const verifier=createClient(url,Deno.env.get("SUPABASE_ANON_KEY")||"",{auth:{persistSession:false,autoRefreshToken:false}});
+    const callerEmail=String(caller.data.user.email||callerProfile.data?.email||"").trim().toLowerCase();
+    if(!callerEmail) return reply(origin,401,{error:"O USUÁRIO AUTORIZADOR NÃO POSSUI E-MAIL DE LOGIN PARA REAUTENTICAÇÃO."});
+    const verified=await verifier.auth.signInWithPassword({email:callerEmail,password:authorizationPassword});
+    if(verified.error||verified.data.user?.id!==caller.data.user.id) return reply(origin,401,{error:"SENHA INCORRETA. EXCLUSÃO NÃO AUTORIZADA."});
     const cpf=digits(body.cpf);
     const email=String(body.email||"").trim().toLowerCase();
     if(!cpf&&!email) return reply(origin,400,{error:"INFORME CPF OU E-MAIL DO CADASTRO."});
