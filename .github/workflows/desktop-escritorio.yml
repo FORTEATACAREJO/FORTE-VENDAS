@@ -19,7 +19,7 @@ jobs:
        @{Name='Forte Fiscal'; File='ForteFiscal'; Url='https://forte-fiscal.onrender.com'; Icon='forte-fiscal.png'},
        @{Name='Forte Frete'; File='ForteFrete'; Url='https://forte-frete.onrender.com'; Icon='forte-frete.png'}
       )
-      Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FORTEATACAREJO/FORTEFISCAL/main/public/icons/fortefiscal-512.png?raw=1' -OutFile 'forte-fiscal.png'
+      magick -background none forte-fiscal.svg -resize 512x512 forte-fiscal.png
       Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/FORTEATACAREJO/FORTE-FRETE/main/favicon.svg' -OutFile 'forte-frete.svg'
       magick -background none forte-frete.svg -resize 512x512 forte-frete.png
       foreach($a in $apps){
