@@ -1,25 +1,14 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <meta name="theme-color" content="#0a8b78" />
-    <link rel="icon" type="image/svg+xml" href="/financeiro-icon.svg" />
-    <link rel="apple-touch-icon" href="/financeiro-icon.svg" />
-    <link rel="manifest" href="/financeiro.webmanifest" />
-    <meta name="application-name" content="FORTE FINANCEIRO" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="FORTE FINANCEIRO" />
-    <title>FORTE FINANCEIRO</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script>
-      new MutationObserver(() => {
-        const titulo = document.querySelector(".authCard h1");
-        if (titulo && titulo.textContent === "FORTE VENDAS") titulo.textContent = "FORTE FINANCEIRO";
-      }).observe(document.getElementById("root"), { childList: true, subtree: true });
-    </script>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="refresh" content="0;url=https://forte-financeiro.onrender.com/" />
+  <title>FORTE FINANCEIRO</title>
+  <script>location.replace("https://forte-financeiro.onrender.com/");</script>
+</head>
+<body>
+  <p>O FORTE FINANCEIRO AGORA É UM SISTEMA INDEPENDENTE.</p>
+  <a href="https://forte-financeiro.onrender.com/">ABRIR FORTE FINANCEIRO</a>
+</body>
 </html>
