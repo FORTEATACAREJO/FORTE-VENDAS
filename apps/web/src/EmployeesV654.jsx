@@ -172,6 +172,40 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   function editEmployee(employee) { setForm({ ...defaults, ...employee, documento: null }); setMessage(""); }
+
+  async function deleteEmployee(employee) {
+    if (!isAdmin && !isMaster) return setMessage("SOMENTE ADMIN OU MASTER PODE EXCLUIR UM CADASTRO.");
+    if (employee.perfil === "MASTER" && !isMaster) return setMessage("SOMENTE MASTER PODE EXCLUIR OUTRO MASTER.");
+    const sameCpf = onlyDigits(employee.cpf) && onlyDigits(employee.cpf) === onlyDigits(currentUser?.cpf);
+    const sameEmail = employee.email && String(employee.email).toLowerCase() === String(currentUser?.email || "").toLowerCase();
+    if (sameCpf || sameEmail) return setMessage("VOCÊ NÃO PODE EXCLUIR O PRÓPRIO CADASTRO.");
+    if (employee.perfil === "MASTER") {
+      const mastersAtivos = employees.filter((x) => x.perfil === "MASTER" && x.ativo !== false);
+      if (mastersAtivos.length <= 1) return setMessage("O ÚLTIMO MASTER ATIVO NÃO PODE SER EXCLUÍDO.");
+    }
+    if (!confirm(`EXCLUIR DEFINITIVAMENTE O CADASTRO DE ${employee.nome}?\n\nESTA OPERAÇÃO REMOVE O CADASTRO DUPLICADO E, QUANDO EXISTIR, O ACESSO CORRESPONDENTE NO SUPABASE/AUTH. ESTA AÇÃO NÃO PODE SER DESFEITA.`)) return;
+    const confirmacao = (prompt(`PARA CONFIRMAR, DIGITE EXCLUIR:`) || "").trim().toUpperCase();
+    if (confirmacao !== "EXCLUIR") return setMessage("EXCLUSÃO CANCELADA: CONFIRMAÇÃO NÃO INFORMADA.");
+    setBusy(true); setMessage("EXCLUINDO CADASTRO…");
+    try {
+      if (supabaseConfigured) {
+        const { data: result, error } = await supabase.functions.invoke("delete-employee", { body: {
+          employeeId: employee.id, cpf: onlyDigits(employee.cpf), email: String(employee.email || "").trim().toLowerCase(),
+        }});
+        if (error) throw error;
+        if (result?.error) throw new Error(result.error);
+      }
+      onChange((old) => ({ ...old,
+        funcionarios:(old.funcionarios || []).filter((x) => x.id !== employee.id),
+        auditoria:[...(old.auditoria || []), {id:`aud-${Date.now()}`, acao:"CADASTRO DE FUNCIONÁRIO EXCLUÍDO", detalhe:`${employee.nome} • cadastro duplicado/removido definitivamente`, usuario:currentUser?.nome || "ADMINISTRADOR", dataHora:new Date().toISOString()}],
+      }));
+      if (form.id === employee.id) setForm(defaults);
+      setMessage("CADASTRO EXCLUÍDO DEFINITIVAMENTE.");
+    } catch (error) {
+      setMessage(`NÃO FOI POSSÍVEL EXCLUIR: ${error.message || "FALHA NO SERVIÇO"}.`);
+    } finally { setBusy(false); }
+  }
+
   function deactivate(employee) {
     if (employee.perfil === "MASTER" && !isMaster) return setMessage("SOMENTE MASTER PODE ALTERAR UM MASTER.");
     const reativando = employee.ativo === false;
@@ -219,6 +253,6 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     {message && <div className="alert warn">{message}</div>}
     <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
     <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, CPF, E-MAIL OU FUNÇÃO"/></div>
-    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button></div></div>)}</div>
+    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button><button className="dangerBtn" disabled={busy} onClick={()=>deleteEmployee(employee)}>EXCLUIR</button></div></div>)}</div>
   </section></div>;
 }
