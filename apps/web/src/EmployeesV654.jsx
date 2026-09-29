@@ -132,13 +132,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   function validate() {
-    const missing = [["nome","NOME"],["cpf","CPF"],["email","E-MAIL"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"]]
+    const missing = [["nome","PRIMEIRO NOME"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"],["perfil","PERFIL"],["unidade","EMPRESA/UNIDADE"]]
       .filter(([key]) => !String(form[key] || "").trim()).map(([, label]) => label);
-    if (!form.documento && !form.documentoFileId) missing.push("CNH OU DOCUMENTO DE IDENTIFICAÇÃO");
     if (missing.length) return `PREENCHA: ${missing.join(", ")}.`;
-    if (!isValidCpf(form.cpf)) return "CPF INVÁLIDO: DÍGITOS VERIFICADORES NÃO CONFEREM. CADASTRO BLOQUEADO.";
-    if (!form.cpfConferido) return "CONFIRA O CPF DIRETAMENTE NO DOCUMENTO E MARQUE A CONFIRMAÇÃO OBRIGATÓRIA.";
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) return "E-MAIL INVÁLIDO.";
     if (onlyDigits(form.whatsapp).length < 10) return "WHATSAPP INVÁLIDO.";
     if (form.perfil === "ADMINISTRADOR" && !isAdmin) return "SOMENTE ADMIN OU MASTER PODE CONCEDER PERFIL ADMINISTRADOR.";
     if (form.perfil === "MASTER" && !isMaster) return "SOMENTE MASTER PODE ALTERAR OUTRO MASTER.";
@@ -160,9 +156,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       }
       const id = form.id || crypto.randomUUID();
       const record = {
-        ...form, id, cpf: onlyDigits(form.cpf), email: form.email.trim().toLowerCase(),
+        ...form, id, cpf: onlyDigits(form.cpf), email: String(form.email || "").trim().toLowerCase(),
         whatsapp: onlyDigits(form.whatsapp), documento: undefined, documentoFileId,
-        documentoConferido:true,
+        documentoConferido:!!form.documento,
         documentoNome: form.documento?.name || form.documentoNome, documentoPath,
         status: supabaseConfigured ? "CONVITE EM PROCESSAMENTO" : "AGUARDANDO CONEXÃO COM SUPABASE",
         criadoEm: form.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(),
@@ -175,12 +171,12 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       }));
       if (supabaseConfigured) {
         const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body: {
-          id, nome: record.nome, cpf: record.cpf, email: record.email, whatsapp: record.whatsapp,
+          id, nome: record.nome, whatsapp: record.whatsapp,
           cargo: record.cargo, perfil: appProfile(record.perfil), permissoes: record.permissoes,
-          unidade: record.unidade, documentoPath:record.documentoPath, documentoNome:record.documentoNome,
+          unidade: record.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
         }});
         if (error) throw error;
-        setMessage(invite?.message || "CONVITE ENVIADO. O FUNCIONÁRIO CRIARÁ A SENHA PELO E-MAIL.");
+        setMessage(invite?.message || "CONVITE PREPARADO PARA WHATSAPP. O FUNCIONÁRIO COMPLETARÁ O CADASTRO E CRIARÁ A SENHA.");
       } else setMessage("CADASTRO SALVO LOCALMENTE. CONECTE O SUPABASE PARA ENVIAR O CONVITE.");
       setForm(defaults);
     } catch (error) { setMessage(`CADASTRO SALVO, MAS O CONVITE NÃO FOI ENVIADO: ${error.message || "FALHA NA FUNÇÃO"}.`); }
@@ -279,19 +275,14 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       </section>
     </div>}
     <div className="modalHead"><div><h2>FUNCIONÁRIOS E PERMISSÕES</h2><p>CADASTRO ADMINISTRADO EXCLUSIVAMENTE POR ADMIN OU MASTER.</p></div><button className="ghost dark" onClick={onClose}>FECHAR</button></div>
-    <div className="employeeWorkflow"><b>1. ANEXAR DOCUMENTO</b><span>2. IA PREENCHE</span><span>3. ADMIN CONFERE PERMISSÕES</span><span>4. CONVITE POR E-MAIL</span></div>
+    <div className="employeeWorkflow"><b>1. PRIMEIRO NOME + WHATSAPP</b><span>2. FUNÇÃO / PERFIL / EMPRESA</span><span>3. CONVITE POR WHATSAPP</span><span>4. FUNCIONÁRIO COMPLETA CADASTRO E CRIA SENHA</span></div>
     <div className="employeeForm">
-      <label className="field">CNH OU IDENTIDADE COM CPF<input type="file" accept=".pdf,image/*" onChange={(e)=>setForm((old)=>({...old,documento:e.target.files?.[0] || null,documentoVencido:false,alertaDocumento:"",cpfConferido:false}))}/><small>{form.documento?.name || form.documentoNome || "DOCUMENTO OBRIGATÓRIO"}{form.documentoVencido ? " — VENCIDO / SUBSTITUIR" : ""}</small></label>
-      <button type="button" disabled={busy || !form.documento} onClick={readDocument}>✦ LER DOCUMENTO COM IA</button>
-      <label className="field">NOME COMPLETO<input value={form.nome} onChange={(e)=>patch("nome",e.target.value.toUpperCase())}/></label>
-      <label className="field">CPF<input value={form.cpf} onChange={(e)=>patch("cpf",e.target.value)}/></label>
-      <label className="field"><span>CONFERÊNCIA OBRIGATÓRIA DO CPF</span><span><input type="checkbox" checked={!!form.cpfConferido} onChange={(e)=>patch("cpfConferido",e.target.checked)}/> CONFIRMO QUE COMPAREI O CPF COM O DOCUMENTO ORIGINAL</span></label>
-      <label className="field">E-MAIL DO FUNCIONÁRIO<input type="email" value={form.email} onChange={(e)=>patch("email",e.target.value.toLowerCase())}/></label>
+      <label className="field">PRIMEIRO NOME<input value={form.nome} onChange={(e)=>patch("nome",e.target.value.toUpperCase().split(/\\s+/)[0])} placeholder="EX.: MARIA"/></label>
       <label className="field">WHATSAPP<input value={form.whatsapp} onChange={(e)=>patch("whatsapp",e.target.value)}/></label>
       <label className="field">FUNÇÃO<select value={form.cargo} onChange={(e)=>patch("cargo",e.target.value)}><option value="">SELECIONE…</option>{CARGOS.map((x)=><option key={x}>{x}</option>)}</select></label>
       <label className="field">PERFIL<select value={form.perfil} onChange={(e)=>changeProfile(e.target.value)}>{PERFIS.map((x)=><option key={x}>{x}</option>)}</select></label>
       <label className="field">UNIDADE<select value={form.unidade} onChange={(e)=>patch("unidade",e.target.value)}>{UNIDADES.map((x)=><option key={x}>{x}</option>)}</select></label>
-      <div className="note"><b>SENHA SEGURA</b><br/>A senha não é armazenada neste cadastro. O funcionário recebe o link no e-mail e cria sua própria senha no primeiro acesso.</div>
+      <div className="note"><b>PRÉ-CADASTRO POR WHATSAPP</b><br/>Para enviar o convite basta primeiro nome, WhatsApp, função, perfil e empresa/unidade. CPF, e-mail e documentos serão preenchidos pelo próprio funcionário ao abrir o convite, antes da liberação definitiva.</div>
     </div>
     <h3>BLOCO DE PERMISSÕES — SOMENTE ADMIN / MASTER</h3>
     <div className="permissionBulkActions">
@@ -306,7 +297,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     {form.alertaDocumento && <div className="alert danger">{form.alertaDocumento}</div>}
     {message && <div className="alert warn">{message}</div>}
     <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
-    <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, CPF, E-MAIL OU FUNÇÃO"/></div>
+    <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, WHATSAPP OU FUNÇÃO"/></div>
     <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button><button className="dangerBtn" disabled={busy} onClick={()=>deleteEmployee(employee)}>EXCLUIR</button></div></div>)}</div>
   </section></div>;
 }
