@@ -536,7 +536,7 @@ const CARGOS = [
   "CONSULTA",
 ];
 const MODULES = [
-  ["painelUnicoVendas", "0", "PAINEL ÚNICO DE VENDAS", "Entrada central VX/VR e roteamento autorizado para Balcão ou Carga Direta."],
+  ["painelUnicoVendas", "0", "PAINEL DE TODAS AS VENDAS", "Entrada central de todas as vendas e roteamento autorizado para Balcão ou Carga Direta."],
   ["clientes", "1", "CARGA DIRETA", "Venda/carga direta com destino definido."],
   ["diretas", "1A", "PAINEL VENDAS DIRETAS", "Nota fiscal, documentos e distribuição por cliente."],
   ["balcao", "2", "VENDA BALCÃO", "Vendas no balcão, entrega, frete e caixa."],
@@ -656,8 +656,8 @@ const MODULE_GROUPS = [
   {
     id: "logistica",
     title: "LOGÍSTICA E OPERAÇÃO",
-    subtitle: "Motoristas, estoque, paletes e controle físico da operação.",
-    modules: ["motorista", "estoque", "paletes"],
+    subtitle: "Estoque, paletes e controle físico. Motoristas são sincronizados do Forte Frete.",
+    modules: ["estoque", "paletes"],
   },
   {
     id: "conferencia",
@@ -2208,7 +2208,6 @@ export default function App() {
           <div>
             <h1>FORTE VENDAS</h1>
             <small>FORTE ATACAREJO — CONTROLE OPERACIONAL + IA</small>
-            {canAccessGroup("financeiro")&&<p><a href="/financeiro.html" className="secondary">▣ ABRIR FORTE FINANCEIRO</a></p>}
           </div>
           <div className="globalSearchWrap">
             <input
