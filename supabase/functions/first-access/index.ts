@@ -58,16 +58,7 @@ const cpfIsValid = (cpf: string) => {
   return true;
 };
 
-const passwordIsValid = (password: string) =>
-  password.length >= 9 &&
-  password.length <= 128 &&
-  /[A-Z]/.test(password) &&
-  /[a-z]/.test(password) &&
-  /\d/.test(password) &&
-  /[^A-Za-z0-9]/.test(password) &&
-  !/(012|123|234|345|456|567|678|789|987|876|765|654|543|432|321|210)/.test(
-    password,
-  );
+const passwordIsValid = (password: string) => /^\d{6}$/.test(password);
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin") || "";
@@ -108,7 +99,7 @@ Deno.serve(async (request) => {
     if (!passwordIsValid(password)) {
       return respond(origin, 400, {
         error:
-          "A SENHA PRECISA TER 9 CARACTERES, MAIÚSCULA, MINÚSCULA, NÚMERO E SÍMBOLO.",
+          "A SENHA DEVE TER EXATAMENTE SEIS NÚMEROS.",
       });
     }
 
@@ -224,7 +215,8 @@ Deno.serve(async (request) => {
     const nationalWhatsapp = whatsapp.startsWith("55") ? whatsapp.slice(2) : whatsapp;
     const pendingInvite = await admin
       .from("fc_usuarios_pendentes")
-      .select("id,empresa_id,nome,perfil,regras,whatsapp,cargo,status,auth_user_id")
+      .select("id,empresa_id,nome,perfil,regras,whatsapp,email,cargo,status,auth_user_id")
+      .eq("cpf", cpf)
       .in("whatsapp", [whatsapp, nationalWhatsapp])
       .in("status", ["CADASTRO_PENDENTE", "CONVITE_ENVIADO"])
       .is("auth_user_id", null)
@@ -239,6 +231,7 @@ Deno.serve(async (request) => {
       pendingInvite.error ||
       !invite ||
       !invitedFirstName ||
+      (invite.email && String(invite.email).toLowerCase() !== emailInformado) ||
       invitedFirstName !== informedFirstName
     ) {
       await admin.from("fc_primeiro_acesso_tentativas").insert({
@@ -319,3 +312,4 @@ Deno.serve(async (request) => {
     });
   }
 });
+

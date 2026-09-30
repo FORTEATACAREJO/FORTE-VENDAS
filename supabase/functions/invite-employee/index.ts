@@ -12,6 +12,7 @@ const normalizePhone = (value: unknown) => {
   return phone;
 };
 
+const cpfIsValid=(cpf:string)=>{if(!/^\d{11}$/.test(cpf)||/^(\d)\1{10}$/.test(cpf))return false;for(const n of[9,10]){let sum=0;for(let i=0;i<n;i++)sum+=Number(cpf[i])*(n+1-i);if((sum*10%11)%10!==Number(cpf[n]))return false}return true};
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -32,18 +33,20 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const nome = String(body.nome || "").trim().split(/\s+/)[0];
     const whatsapp = normalizePhone(body.whatsapp);
-    if (nome.length < 2 || !/^55\d{10,11}$/.test(whatsapp)) {
-      throw new Error("INFORME SOMENTE O PRIMEIRO NOME E UM WHATSAPP VÁLIDO COM DDD.");
+    const cpf = String(body.cpf||"").replace(/\D/g, "");
+    const email = String(body.email||"").trim().toLowerCase();
+    if (nome.length < 2 || !cpfIsValid(cpf) || !/^55\d{10,11}$/.test(whatsapp)) {
+      throw new Error("INFORME NOME, CPF E WHATSAPP VÁLIDOS.");
     }
 
     const existing = await admin.from("fc_usuarios_pendentes").select("id,status")
-      .eq("empresa_id", profile.empresa_id).in("whatsapp", [whatsapp, whatsapp.slice(2)])
+      .eq("empresa_id", profile.empresa_id).eq("cpf", cpf)
       .not("status", "in", "(RECUSADO,APROVADO)").maybeSingle();
     const id = existing.data?.id || crypto.randomUUID();
     const { error } = await admin.from("fc_usuarios_pendentes").upsert({
       id,
       empresa_id: profile.empresa_id,
-      nome,
+      nome, cpf, email: email||null,
       perfil: "CONSULTA",
       regras: { origem: "CONVITE", completarCadastro: true, criarSenha: true },
       status: "CADASTRO_PENDENTE",
