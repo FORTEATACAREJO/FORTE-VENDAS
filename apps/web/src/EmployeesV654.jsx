@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { putFile } from "./fileStore";
 import { supabase, supabaseConfigured } from "./supabase";
 
@@ -10,11 +10,9 @@ const CARGOS = [
   "VENDEDOR EXTERNO",
   "FINANCEIRO",
   "MOTORISTA DE ENTREGA",
-  "OPERADOR GERAL",
-  "MASTER",
   "ADMINISTRADOR",
 ];
-const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "OPERADOR GERAL", "FINANCEIRO", "MASTER", "ADMINISTRADOR"];
+const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "FINANCEIRO", "ADMINISTRADOR"];
 const UNIDADES = [
   "MATRIZ - MONTE CARMELO/MG",
   "FILIAL - CALDAS NOVAS/GO",
@@ -53,8 +51,6 @@ const appProfile = (perfil) => ({
   "CONFERÊNCIA": "CONFERENCIA",
   FINANCEIRO: "FINANCEIRO",
   VENDAS: "VENDAS",
-  "OPERADOR GERAL": "OPERADOR_GERAL",
-  MASTER: "MASTER",
   ADMINISTRADOR: "ADMINISTRADOR",
 }[perfil] || "CONSULTA");
 
@@ -63,15 +59,20 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [authorizationPassword, setAuthorizationPassword] = useState("");
-  const [showAuthorizationPassword, setShowAuthorizationPassword] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
   const isAdmin = !!currentUser?.admin;
   const isMaster = !!currentUser?.master;
   const employees = data.funcionarios || [];
   const filtered = useMemo(() => employees.filter((x) =>
     !search || `${x.nome} ${x.cpf} ${x.email} ${x.whatsapp} ${x.cargo}`.toUpperCase().includes(search.toUpperCase())
   ), [employees, search]);
+
+  const loadPendingApprovals = async () => {
+    if (!supabaseConfigured || !isAdmin) return;
+    const { data, error } = await supabase.functions.invoke("employee-approval", { body: { action:"LIST" } });
+    if (!error) setPendingApprovals(data?.pending || []);
+  };
+  useEffect(() => { loadPendingApprovals(); }, [isAdmin]);
 
   if (!isAdmin) return null;
   const patch = (key, value) => setForm((old) => ({
@@ -95,24 +96,13 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   ]));
   const setAllPermissions = (value) => patch("permissoes", permissionSet(value));
   const setPermissionColumn = (action, value) => patch("permissoes", permissionSet(value, action));
-  const changeProfile = (perfil) => setForm((old) => {
-    const full = { visualizar:true, criar:true, editar:true, aprovar:true };
-    const none = { visualizar:false, criar:false, editar:false, aprovar:false };
-    const operadorGeral = Object.fromEntries(MODULOS.map((module) => [
-      module,
-      module === "FINANCEIRO" ? { ...none } : { ...full },
-    ]));
-    return {
-      ...old,
-      perfil,
-      cargo: perfil === "OPERADOR GERAL" ? "OPERADOR GERAL" : old.cargo,
-      permissoes: (perfil === "ADMINISTRADOR" || perfil === "MASTER")
-        ? Object.fromEntries(MODULOS.map((module) => [module, { ...full }]))
-        : perfil === "OPERADOR GERAL"
-          ? operadorGeral
-          : old.permissoes,
-    };
-  });
+  const changeProfile = (perfil) => setForm((old) => ({
+    ...old,
+    perfil,
+    permissoes: perfil === "ADMINISTRADOR"
+      ? Object.fromEntries(MODULOS.map((module) => [module, { visualizar:true, criar:true, editar:true, aprovar:true }]))
+      : old.permissoes,
+  }));
 
   async function readDocument() {
     if (!form.documento) return setMessage("ANEXE A CNH OU O DOCUMENTO DE IDENTIFICAÇÃO.");
@@ -134,18 +124,22 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   function validate() {
-    const missing = [["nome","PRIMEIRO NOME"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"],["perfil","PERFIL"],["unidade","EMPRESA/UNIDADE"]]
+    const missing = [["nome","NOME"],["cpf","CPF"],["email","E-MAIL"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"]]
       .filter(([key]) => !String(form[key] || "").trim()).map(([, label]) => label);
+    if (!form.documento && !form.documentoFileId) missing.push("CNH OU DOCUMENTO DE IDENTIFICAÇÃO");
     if (missing.length) return `PREENCHA: ${missing.join(", ")}.`;
+    if (!isValidCpf(form.cpf)) return "CPF INVÁLIDO: DÍGITOS VERIFICADORES NÃO CONFEREM. CADASTRO BLOQUEADO.";
+    if (!form.cpfConferido) return "CONFIRA O CPF DIRETAMENTE NO DOCUMENTO E MARQUE A CONFIRMAÇÃO OBRIGATÓRIA.";
+    if (!/^\S+@\S+\.\S+$/.test(form.email)) return "E-MAIL INVÁLIDO.";
     if (onlyDigits(form.whatsapp).length < 10) return "WHATSAPP INVÁLIDO.";
     if (form.perfil === "ADMINISTRADOR" && !isAdmin) return "SOMENTE ADMIN OU MASTER PODE CONCEDER PERFIL ADMINISTRADOR.";
     if (form.perfil === "MASTER" && !isMaster) return "SOMENTE MASTER PODE ALTERAR OUTRO MASTER.";
     return "";
   }
 
-  async function saveAndInvite(sendInvite = true) {
+  async function saveAndInvite() {
     const invalid = validate(); if (invalid) return setMessage(invalid);
-    setBusy(true); setMessage(sendInvite ? "SALVANDO CADASTRO E PREPARANDO CONVITE…" : "SALVANDO CADASTRO…");
+    setBusy(true); setMessage("SALVANDO CADASTRO E PREPARANDO CONVITE…");
     try {
       let documentoFileId = form.documentoFileId || "";
       if (form.documento) { documentoFileId = `func-${Date.now()}`; await putFile(documentoFileId, form.documento); }
@@ -158,11 +152,11 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       }
       const id = form.id || crypto.randomUUID();
       const record = {
-        ...form, id, cpf: onlyDigits(form.cpf), email: String(form.email || "").trim().toLowerCase(),
+        ...form, id, cpf: onlyDigits(form.cpf), email: form.email.trim().toLowerCase(),
         whatsapp: onlyDigits(form.whatsapp), documento: undefined, documentoFileId,
-        documentoConferido:!!form.documento,
+        documentoConferido:true,
         documentoNome: form.documento?.name || form.documentoNome, documentoPath,
-        status: sendInvite ? (supabaseConfigured ? "CONVITE EM PROCESSAMENTO" : "AGUARDANDO CONEXÃO COM SUPABASE") : (form.status || "PRÉ-CADASTRADO — AGUARDANDO CONVITE"),
+        status: supabaseConfigured ? "CONVITE EM PROCESSAMENTO" : "AGUARDANDO CONEXÃO COM SUPABASE",
         criadoEm: form.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(),
         criadoPor: currentUser?.nome || "ADMINISTRADOR",
       };
@@ -171,90 +165,30 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
         funcionarios: form.id ? (old.funcionarios || []).map((x) => x.id === id ? record : x) : [...(old.funcionarios || []), record],
         auditoria: [...(old.auditoria || []), { id:`aud-${Date.now()}`, acao: form.id ? "FUNCIONÁRIO ATUALIZADO" : "FUNCIONÁRIO CADASTRADO", detalhe:`${record.nome} • ${record.cargo} • ${record.email}`, usuario:currentUser?.nome, dataHora:new Date().toISOString() }],
       }));
-      if (!sendInvite) {
-        setMessage("CADASTRO SALVO. USE O BOTÃO ENVIAR CONVITE QUANDO QUISER DISPARAR O WHATSAPP.");
-      } else if (supabaseConfigured) {
+      if (supabaseConfigured) {
         const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body: {
-          id, nome: record.nome, whatsapp: record.whatsapp,
+          id, nome: record.nome, cpf: record.cpf, email: record.email, whatsapp: record.whatsapp,
           cargo: record.cargo, perfil: appProfile(record.perfil), permissoes: record.permissoes,
-          unidade: record.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
+          unidade: record.unidade, documentoPath:record.documentoPath, documentoNome:record.documentoNome,
         }});
         if (error) throw error;
-        if (invite?.error) throw new Error(invite.error);
-        if (invite?.whatsappUrl) window.open(invite.whatsappUrl, "_blank", "noopener,noreferrer");
-        setMessage(invite?.message || "CONVITE PREPARADO PARA WHATSAPP. O FUNCIONÁRIO COMPLETARÁ O CADASTRO E CRIARÁ A SENHA.");
+        setMessage(invite?.message || "CONVITE ENVIADO. O FUNCIONÁRIO CRIARÁ A SENHA PELO E-MAIL.");
       } else setMessage("CADASTRO SALVO LOCALMENTE. CONECTE O SUPABASE PARA ENVIAR O CONVITE.");
       setForm(defaults);
     } catch (error) { setMessage(`CADASTRO SALVO, MAS O CONVITE NÃO FOI ENVIADO: ${error.message || "FALHA NA FUNÇÃO"}.`); }
     finally { setBusy(false); }
   }
 
-  async function sendEmployeeInvite(employee) {
-    if (!employee?.whatsapp || onlyDigits(employee.whatsapp).length < 10) return setMessage("CADASTRO SEM WHATSAPP VÁLIDO. EDITE O FUNCIONÁRIO ANTES DE ENVIAR O CONVITE.");
-    setBusy(true); setMessage(`PREPARANDO CONVITE PARA ${employee.nome}…`);
-    try {
-      if (!supabaseConfigured) throw new Error("SUPABASE NÃO CONFIGURADO");
-      const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body: {
-        id: employee.id, nome: employee.nome, whatsapp: onlyDigits(employee.whatsapp),
-        cargo: employee.cargo, perfil: appProfile(employee.perfil), permissoes: employee.permissoes || {},
-        unidade: employee.unidade, conviteWhatsapp:true, completarCadastro:true, criarSenha:true,
-      }});
-      if (error) throw error;
-      if (invite?.error) throw new Error(invite.error);
-      if (invite?.whatsappUrl) window.open(invite.whatsappUrl, "_blank", "noopener,noreferrer");
-      onChange((old) => ({ ...old, funcionarios:(old.funcionarios || []).map((x)=>x.id===employee.id?{...x,status:"CONVITE ENVIADO",convidadoEm:new Date().toISOString()}:x) }));
-      setMessage(invite?.message || "CONVITE ENVIADO PELO WHATSAPP.");
-    } catch (error) { setMessage(`NÃO FOI POSSÍVEL ENVIAR O CONVITE: ${error.message || "FALHA NO SERVIÇO"}. O CADASTRO FOI PRESERVADO.`); }
-    finally { setBusy(false); }
-  }
-
   function editEmployee(employee) { setForm({ ...defaults, ...employee, documento: null }); setMessage(""); }
-
-  function deleteEmployee(employee) {
-    if (!isAdmin && !isMaster) return setMessage("SOMENTE ADMIN OU MASTER PODE EXCLUIR UM CADASTRO.");
-    if (employee.perfil === "MASTER" && !isMaster) return setMessage("SOMENTE MASTER PODE EXCLUIR OUTRO MASTER.");
-    const sameCpf = onlyDigits(employee.cpf) && onlyDigits(employee.cpf) === onlyDigits(currentUser?.cpf);
-    const sameEmail = employee.email && String(employee.email).toLowerCase() === String(currentUser?.email || "").toLowerCase();
-    if (sameCpf || sameEmail) return setMessage("VOCÊ NÃO PODE EXCLUIR O PRÓPRIO CADASTRO.");
-    if (employee.perfil === "MASTER") {
-      const mastersAtivos = employees.filter((x) => x.perfil === "MASTER" && x.ativo !== false);
-      if (mastersAtivos.length <= 1) return setMessage("O ÚLTIMO MASTER ATIVO NÃO PODE SER EXCLUÍDO.");
-    }
-    setAuthorizationPassword("");
-    setShowAuthorizationPassword(false);
-    setDeleteTarget(employee);
+  async function decidePending(item, action) {
+    const verb = action === "APPROVE" ? "APROVAR" : "RECUSAR";
+    if (!confirm(`${verb} O CADASTRO DE ${item.nome}?`)) return;
+    setBusy(true); setMessage(`${verb} CADASTRO…`);
+    const { data: result, error } = await supabase.functions.invoke("employee-approval", { body: { action, id:item.id } });
+    setMessage(error ? "NÃO FOI POSSÍVEL CONCLUIR A ANÁLISE." : result?.message || "ANÁLISE CONCLUÍDA.");
+    await loadPendingApprovals();
+    setBusy(false);
   }
-
-  async function confirmDeleteEmployee() {
-    const employee = deleteTarget;
-    if (!employee) return;
-    if (!authorizationPassword) return setMessage("INFORME A SENHA DO ADMIN/MASTER PARA AUTORIZAR A EXCLUSÃO.");
-    setBusy(true); setMessage("VALIDANDO AUTORIZAÇÃO E EXCLUINDO CADASTRO…");
-    try {
-      if (supabaseConfigured) {
-        const { data: result, error } = await supabase.functions.invoke("delete-employee", { body: {
-          employeeId: employee.id, cpf: onlyDigits(employee.cpf), email: String(employee.email || "").trim().toLowerCase(),
-          authorizationPassword,
-        }});
-        if (error) throw error;
-        if (result?.error) throw new Error(result.error);
-      }
-      onChange((old) => ({ ...old,
-        funcionarios:(old.funcionarios || []).filter((x) => x.id !== employee.id),
-        auditoria:[...(old.auditoria || []), {id:`aud-${Date.now()}`, acao:"CADASTRO DE FUNCIONÁRIO EXCLUÍDO", detalhe:`${employee.nome} • cadastro duplicado/removido definitivamente`, usuario:currentUser?.nome || "ADMINISTRADOR", dataHora:new Date().toISOString()}],
-      }));
-      if (form.id === employee.id) setForm(defaults);
-      setDeleteTarget(null);
-      setAuthorizationPassword("");
-      setShowAuthorizationPassword(false);
-      setMessage("CADASTRO EXCLUÍDO DEFINITIVAMENTE.");
-    } catch (error) {
-      setAuthorizationPassword("");
-      setShowAuthorizationPassword(false);
-      setMessage(`NÃO FOI POSSÍVEL EXCLUIR: ${error.message || "FALHA NO SERVIÇO"}.`);
-    } finally { setBusy(false); }
-  }
-
   function deactivate(employee) {
     if (employee.perfil === "MASTER" && !isMaster) return setMessage("SOMENTE MASTER PODE ALTERAR UM MASTER.");
     const reativando = employee.ativo === false;
@@ -273,41 +207,20 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   return <div className="modalBackdrop"><section className="modal employeeModal">
-    {deleteTarget && <div className="modalBackdrop" style={{zIndex:9999}}>
-      <section className="modal" style={{maxWidth:560}}>
-        <div className="modalHead"><div><h2>AUTORIZAR EXCLUSÃO</h2><p>EXCLUIR DEFINITIVAMENTE O CADASTRO DE {deleteTarget.nome}?</p></div></div>
-        <div className="note">A exclusão exige reautenticação do ADMIN/MASTER. A senha não será armazenada.</div>
-        <label className="field">SENHA DO ADMIN/MASTER
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <input
-              type={showAuthorizationPassword ? "text" : "password"}
-              value={authorizationPassword}
-              onChange={(e)=>setAuthorizationPassword(e.target.value)}
-              autoComplete="new-password"
-              autoFocus
-              onKeyDown={(e)=>{ if(e.key==="Enter") confirmDeleteEmployee(); }}
-              style={{flex:1}}
-            />
-            <button type="button" className="ghost dark" aria-label={showAuthorizationPassword ? "Ocultar senha" : "Mostrar senha"} onClick={()=>setShowAuthorizationPassword((v)=>!v)}>
-              {showAuthorizationPassword ? "🙈" : "👁"}
-            </button>
-          </div>
-        </label>
-        <div className="modalActions">
-          <button type="button" className="ghost dark" onClick={()=>{setDeleteTarget(null);setAuthorizationPassword("");setShowAuthorizationPassword(false);}}>CANCELAR</button>
-          <button type="button" className="dangerBtn" disabled={busy || !authorizationPassword} onClick={confirmDeleteEmployee}>{busy ? "VALIDANDO…" : "AUTORIZAR E EXCLUIR"}</button>
-        </div>
-      </section>
-    </div>}
     <div className="modalHead"><div><h2>FUNCIONÁRIOS E PERMISSÕES</h2><p>CADASTRO ADMINISTRADO EXCLUSIVAMENTE POR ADMIN OU MASTER.</p></div><button className="ghost dark" onClick={onClose}>FECHAR</button></div>
-    <div className="employeeWorkflow"><b>1. PRIMEIRO NOME + WHATSAPP</b><span>2. FUNÇÃO / PERFIL / EMPRESA</span><span>3. CONVITE POR WHATSAPP</span><span>4. FUNCIONÁRIO COMPLETA CADASTRO E CRIA SENHA</span></div>
+    <div className="employeeWorkflow"><b>1. ANEXAR DOCUMENTO</b><span>2. IA PREENCHE</span><span>3. ADMIN CONFERE PERMISSÕES</span><span>4. CONVITE POR E-MAIL</span></div>
     <div className="employeeForm">
-      <label className="field">PRIMEIRO NOME<input value={form.nome} onChange={(e)=>patch("nome",e.target.value.toUpperCase().split(/\\s+/)[0])} placeholder="EX.: MARIA"/></label>
+      <label className="field">CNH OU IDENTIDADE COM CPF<input type="file" accept=".pdf,image/*" onChange={(e)=>setForm((old)=>({...old,documento:e.target.files?.[0] || null,documentoVencido:false,alertaDocumento:"",cpfConferido:false}))}/><small>{form.documento?.name || form.documentoNome || "DOCUMENTO OBRIGATÓRIO"}{form.documentoVencido ? " — VENCIDO / SUBSTITUIR" : ""}</small></label>
+      <button type="button" disabled={busy || !form.documento} onClick={readDocument}>✦ LER DOCUMENTO COM IA</button>
+      <label className="field">NOME COMPLETO<input value={form.nome} onChange={(e)=>patch("nome",e.target.value.toUpperCase())}/></label>
+      <label className="field">CPF<input value={form.cpf} onChange={(e)=>patch("cpf",e.target.value)}/></label>
+      <label className="field"><span>CONFERÊNCIA OBRIGATÓRIA DO CPF</span><span><input type="checkbox" checked={!!form.cpfConferido} onChange={(e)=>patch("cpfConferido",e.target.checked)}/> CONFIRMO QUE COMPAREI O CPF COM O DOCUMENTO ORIGINAL</span></label>
+      <label className="field">E-MAIL DO FUNCIONÁRIO<input type="email" value={form.email} onChange={(e)=>patch("email",e.target.value.toLowerCase())}/></label>
       <label className="field">WHATSAPP<input value={form.whatsapp} onChange={(e)=>patch("whatsapp",e.target.value)}/></label>
       <label className="field">FUNÇÃO<select value={form.cargo} onChange={(e)=>patch("cargo",e.target.value)}><option value="">SELECIONE…</option>{CARGOS.map((x)=><option key={x}>{x}</option>)}</select></label>
       <label className="field">PERFIL<select value={form.perfil} onChange={(e)=>changeProfile(e.target.value)}>{PERFIS.map((x)=><option key={x}>{x}</option>)}</select></label>
       <label className="field">UNIDADE<select value={form.unidade} onChange={(e)=>patch("unidade",e.target.value)}>{UNIDADES.map((x)=><option key={x}>{x}</option>)}</select></label>
-      <div className="note"><b>PRÉ-CADASTRO POR WHATSAPP</b><br/>Para enviar o convite basta primeiro nome, WhatsApp, função, perfil e empresa/unidade. CPF, e-mail e documentos serão preenchidos pelo próprio funcionário ao abrir o convite, antes da liberação definitiva.</div>
+      <div className="note"><b>SENHA SEGURA</b><br/>A senha não é armazenada neste cadastro. O funcionário recebe o link no e-mail e cria sua própria senha no primeiro acesso.</div>
     </div>
     <h3>BLOCO DE PERMISSÕES — SOMENTE ADMIN / MASTER</h3>
     <div className="permissionBulkActions">
@@ -318,11 +231,13 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       <button type="button" className="ghost dark" onClick={()=>setPermissionColumn("editar",true)}>EDITAR TODOS</button>
       <button type="button" className="ghost dark" onClick={()=>setPermissionColumn("aprovar",true)}>APROVAR TODOS</button>
     </div>
-    <div className="permissionMatrix"><b>MÓDULO</b><b>VER</b><b>CRIAR</b><b>EDITAR</b><b>APROVAR</b>{MODULOS.map((module)=><div className="permissionRow" key={module}><strong>{module}</strong>{["visualizar","criar","editar","aprovar"].map((action)=><input key={action} type="checkbox" disabled={form.perfil === "OPERADOR GERAL" && module === "FINANCEIRO"} checked={!!form.permissoes?.[module]?.[action]} onChange={()=>togglePermission(module,action)}/>)}</div>)}</div>
+    <div className="permissionMatrix"><b>MÓDULO</b><b>VER</b><b>CRIAR</b><b>EDITAR</b><b>APROVAR</b>{MODULOS.map((module)=><div className="permissionRow" key={module}><strong>{module}</strong>{["visualizar","criar","editar","aprovar"].map((action)=><input key={action} type="checkbox" checked={!!form.permissoes?.[module]?.[action]} onChange={()=>togglePermission(module,action)}/>)}</div>)}</div>
     {form.alertaDocumento && <div className="alert danger">{form.alertaDocumento}</div>}
     {message && <div className="alert warn">{message}</div>}
-    <div className="modalActions" style={{gap:6}}><button className="ghost dark" style={{padding:"7px 12px",fontSize:10}} onClick={()=>setForm(defaults)}>LIMPAR</button><button className="ghost dark" style={{padding:"7px 12px",fontSize:10}} disabled={busy} onClick={()=>saveAndInvite(false)}>{busy ? "SALVANDO…" : "SALVAR"}</button><button style={{padding:"7px 13px",fontSize:10}} disabled={busy} onClick={()=>saveAndInvite(true)}>{busy ? "PROCESSANDO…" : "SALVAR + ENVIAR CONVITE"}</button></div>
-    <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, WHATSAPP OU FUNÇÃO"/></div>
-    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions" style={{display:"grid",gridTemplateColumns:"58px 96px 76px 62px",gap:4,alignItems:"center",justifyContent:"end",whiteSpace:"nowrap"}}><button className="ghost dark" style={{padding:"5px 6px",fontSize:9.5,minHeight:28,lineHeight:1}} onClick={()=>editEmployee(employee)}>EDITAR</button><button style={{padding:"5px 6px",fontSize:9.5,minHeight:28,lineHeight:1}} disabled={busy || employee.ativo === false} onClick={()=>sendEmployeeInvite(employee)}>ENVIAR CONVITE</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} style={{padding:"5px 6px",fontSize:9.5,minHeight:28,lineHeight:1}} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button><button className="dangerBtn" style={{padding:"5px 6px",fontSize:9.5,minHeight:28,lineHeight:1}} disabled={busy} onClick={()=>deleteEmployee(employee)}>EXCLUIR</button></div></div>)}</div>
+    <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
+    <div className="employeeListHead"><h3>AGUARDANDO APROVAÇÃO DO ADMIN / MASTER</h3></div>
+    <div className="cadList">{pendingApprovals.length===0?<div className="cadRow"><div><b>NENHUM CADASTRO AGUARDANDO ANÁLISE</b></div></div>:pendingApprovals.map((item)=><div className="cadRow" key={item.id}><div><b>{item.nome}</b><small>{item.cargo||"FUNÇÃO NÃO INFORMADA"} • {item.cpf||"CPF PENDENTE"} • {item.status}</small></div><div className="cadRowActions">{item.status==="EM_ANALISE"&&<button disabled={busy} onClick={()=>decidePending(item,"APPROVE")}>APROVAR</button>}<button className="dangerBtn" disabled={busy} onClick={()=>decidePending(item,"REJECT")}>RECUSAR</button></div></div>)}</div>
+    <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, CPF, E-MAIL OU FUNÇÃO"/></div>
+    <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button></div></div>)}</div>
   </section></div>;
 }
