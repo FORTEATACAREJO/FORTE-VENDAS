@@ -1,82 +1,50 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-
-const allowedOrigins = new Set([
-  "https://forte-vendas.onrender.com",
-  "https://forte-financeiro.onrender.com",
-  "https://forte-venda-externa.onrender.com",
-  "https://forte-carga-direta.onrender.com",
-  "http://localhost:5178",
-]);
-
-const genericMessage =
-  "Se o cadastro existir e possuir e-mail, o link para criar uma nova senha será enviado.";
-
-function headers(origin: string) {
-  return {
-    "Access-Control-Allow-Origin": allowedOrigins.has(origin)
-      ? origin
-      : "https://forte-vendas.onrender.com",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json",
-    Vary: "Origin",
-  };
-}
-
+const origins = new Set(["https://forte-vendas.onrender.com", "https://forte-vendas-app.onrender.com", "https://forte-financeiro.onrender.com", "https://forte-venda-externa.onrender.com", "https://forte-carga-direta.onrender.com", "http://localhost:5178"]);
+const originDefault = "https://forte-vendas.onrender.com";
+const normalizePhone = (v: unknown) => {const d=String(v??"").replace(/\D/g, "");return d.length===10||d.length===11?"55"+d:d;};
+const generic = "Se CPF/e-mail e WhatsApp corresponderem ao cadastro, o link para criar a senha será enviado ao WhatsApp cadastrado.";
 Deno.serve(async (req: Request) => {
-  const origin = req.headers.get("origin") ?? "";
-  const responseHeaders = headers(origin);
+ const origin=req.headers.get("origin")||"";
+ const headers={"Access-Control-Allow-Origin":origins.has(origin)?origin:originDefault,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json","Cache-Control":"no-store",Vary:"Origin"};
+ const reply=(body:unknown,status=200)=>Response.json(body,{status,headers});
+ if(req.method==="OPTIONS")return new Response("ok",{headers});
+ if(req.method!=="POST"||(origin&&!origins.has(origin)))return reply({error:"REQUISIÇÃO NÃO PERMITIDA."},403);
+ try{
+  const body=await req.json();
+  const raw=String(body.identificador||"").trim().toLowerCase();
+  const byEmail=raw.includes("@");
+  const value=byEmail?raw:raw.replace(/\D/g,"");
+  const phone=normalizePhone(body.whatsapp);
+  if((byEmail?!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value):!/^\d{11}$/.test(value))||!/^55\d{10,11}$/.test(phone))return reply({error:"INFORME CPF OU E-MAIL E WHATSAPP VÁLIDO COM DDD."},400);
+  const token=Deno.env.get("WHATSAPP_ACCESS_TOKEN"),phoneId=Deno.env.get("WHATSAPP_PHONE_NUMBER_ID"),template=Deno.env.get("WHATSAPP_RECOVERY_TEMPLATE");
+  if(!token||!phoneId||!template)return reply({error:"A RECUPERAÇÃO POR WHATSAPP AINDA NÃO ESTÁ ATIVADA. CONTATE O ADMINISTRADOR."},503);
+  const admin=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false,autoRefreshToken:false}});
+  const hmacKey=await crypto.subtle.importKey("raw",new TextEncoder().encode(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const hash=async(text:string)=>Array.from(new Uint8Array(await crypto.subtle.sign("HMAC",hmacKey,new TextEncoder().encode(text)))).map(x=>x.toString(16).padStart(2,"0")).join("");
+  const now=Date.now(),bucket=Math.floor(now/60000),previous=bucket-1;
+  const keys=[await hash(value+":"+bucket),await hash(value+":"+previous)];
+  const rate=await admin.from("password_recovery_limits").insert(keys.map(request_key=>({request_key,created_at:new Date(now).toISOString()})));
+  if(rate.error?.code==="23505")return reply({error:"AGUARDE UM MINUTO ANTES DE SOLICITAR NOVAMENTE."},429);
+  if(rate.error)throw new Error("rate_limit_storage");
+  await admin.from("password_recovery_limits").delete().lt("created_at",new Date(now-86400000).toISOString());
+  const query=admin.from("fc_perfis").select("user_id,email,whatsapp").eq("ativo",true);
+  const found=byEmail?await query.eq("email",value).maybeSingle():await query.eq("cpf",value).maybeSingle();
+  if(found.error)throw new Error("account_lookup");
+  let account=found.data?{user_id:found.data.user_id,email:found.data.email,whatsapp:found.data.whatsapp}:null;
 
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: responseHeaders });
-  }
-
-  if (req.method !== "POST" || (origin && !allowedOrigins.has(origin))) {
-    return new Response(JSON.stringify({ error: "Requisição não permitida." }), {
-      status: 403,
-      headers: responseHeaders,
-    });
-  }
-
-  try {
-    const { identificador = "" } = await req.json();
-    const normalized = String(identificador).trim().toLowerCase();
-    if (!normalized) {
-      return new Response(JSON.stringify({ message: genericMessage }), {
-        status: 200,
-        headers: responseHeaders,
-      });
-    }
-
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { auth: { persistSession: false, autoRefreshToken: false } },
-    );
-
-    const query = admin.from("fc_perfis").select("email").eq("ativo", true);
-    const { data } = normalized.includes("@")
-      ? await query.ilike("email", normalized).maybeSingle()
-      : await query.eq("cpf", normalized.replace(/\D/g, "")).maybeSingle();
-
-    const email = String(data?.email ?? "").trim().toLowerCase();
-    if (email) {
-      const client = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-        { auth: { persistSession: false, autoRefreshToken: false } },
-      );
-      await client.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://forte-vendas.onrender.com/",
-      });
-    }
-  } catch {
-    // A resposta permanece genérica para não revelar se o cadastro existe.
-  }
-
-  return new Response(JSON.stringify({ message: genericMessage }), {
-    status: 200,
-    headers: responseHeaders,
-  });
+  if(!account||normalizePhone(account.whatsapp)!==phone)return reply({message:generic});
+  const user=await admin.auth.admin.getUserById(account.user_id);
+  if(user.error)throw new Error("auth_lookup");
+  const email=user.data.user?.email;
+  if(!email)return reply({message:generic});
+  const link=await admin.auth.admin.generateLink({type:"recovery",email,options:{redirectTo:originDefault+"/?recovery=1"}});
+  if(link.error||!link.data.properties?.action_link)throw new Error("recovery_link");
+  const actionLink=link.data.properties.action_link;
+  const version=Deno.env.get("WHATSAPP_GRAPH_VERSION")||"v23.0";
+  const components=[{type:"body",parameters:[{type:"text",text:actionLink}]}];
+  const response=await fetch(`https://graph.facebook.com/${version}/${phoneId}/messages`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({messaging_product:"whatsapp",to:normalizePhone(account.whatsapp),type:"template",template:{name:template,language:{code:"pt_BR"},components}}),signal:AbortSignal.timeout(15000)});
+  const result=await response.json();
+  if(!response.ok||!result.messages?.[0]?.id)throw new Error("whatsapp_delivery");
+  return reply({message:generic});
+ }catch(error){console.error("WHATSAPP_RECOVERY_FAILED",error instanceof Error?error.message:"unexpected");return reply({error:"NÃO FOI POSSÍVEL ENVIAR PELO WHATSAPP AGORA. TENTE NOVAMENTE EM ALGUNS MINUTOS."},503);}
 });
