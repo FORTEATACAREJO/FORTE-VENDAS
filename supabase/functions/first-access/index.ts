@@ -2,6 +2,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 const allowed = new Set([
   "https://forte-vendas.onrender.com",
+  "https://forte-financeiro.onrender.com",
+  "https://forte-venda-externa.onrender.com",
+  "https://forte-carga-direta.onrender.com",
   "http://localhost:5178",
 ]);
 
@@ -215,18 +218,40 @@ Deno.serve(async (request) => {
       });
     }
 
-    const email = emailInformado || `cpf.${cpf}@acesso.forte.internal`;
-    const empresa = await admin
-      .from("fc_empresas")
-      .select("id")
-      .eq("ativo", true)
+    // Novos usuários só podem prosseguir quando um Admin/Master tiver criado
+    // previamente o convite. O Forte Frete possui fluxo próprio e não usa
+    // esta função.
+    const nationalWhatsapp = whatsapp.startsWith("55") ? whatsapp.slice(2) : whatsapp;
+    const pendingInvite = await admin
+      .from("fc_usuarios_pendentes")
+      .select("id,empresa_id,nome,perfil,regras,whatsapp,cargo,status,auth_user_id")
+      .in("whatsapp", [whatsapp, nationalWhatsapp])
+      .in("status", ["CADASTRO_PENDENTE", "CONVITE_ENVIADO"])
+      .is("auth_user_id", null)
+      .order("created_at", { ascending: false })
       .limit(1)
-      .single();
-    if (empresa.error) {
-      return respond(origin, 503, {
-        error: "CADASTRO TEMPORARIAMENTE INDISPONÍVEL.",
+      .maybeSingle();
+
+    const invite = pendingInvite.data;
+    const invitedFirstName = normalizeName(invite?.nome).split(" ")[0];
+    const informedFirstName = normalizeName(nome).split(" ")[0];
+    if (
+      pendingInvite.error ||
+      !invite ||
+      !invitedFirstName ||
+      invitedFirstName !== informedFirstName
+    ) {
+      await admin.from("fc_primeiro_acesso_tentativas").insert({
+        ip_hash: ipHash,
+        cpf_hash: cpfHash,
+        status: "SEM_CONVITE",
+      });
+      return respond(origin, 403, {
+        error: "ACESSO SOMENTE POR CONVITE. SOLICITE O CONVITE AO ADMINISTRADOR.",
       });
     }
+
+    const email = emailInformado || `cpf.${cpf}@acesso.forte.internal`;
 
     const created = await admin.auth.admin.createUser({
       email,
@@ -244,10 +269,10 @@ Deno.serve(async (request) => {
 
     const profile = await admin.from("fc_perfis").insert({
       user_id: userId,
-      empresa_id: empresa.data.id,
+      empresa_id: invite.empresa_id,
       nome,
-      perfil: "CONSULTA",
-      permissoes: {},
+      perfil: invite.perfil || "CONSULTA",
+      permissoes: invite.regras?.permissoes || {},
       ativo: false,
       trocar_senha: false,
       cpf,
@@ -255,17 +280,15 @@ Deno.serve(async (request) => {
       whatsapp,
       documento_conferido: false,
     });
-    const pending = await admin.from("fc_usuarios_pendentes").insert({
-      empresa_id: empresa.data.id,
+    const pending = await admin.from("fc_usuarios_pendentes").update({
       nome,
-      perfil: "CONSULTA",
-      regras: { origem: "PRIMEIRO_ACESSO", acesso_modulos: false },
+      regras: { ...(invite.regras || {}), origem: "CONVITE", acesso_modulos: false },
       status: "PRE_CADASTRO",
       auth_user_id: userId,
       cpf,
       email: emailInformado || null,
       whatsapp,
-    });
+    }).eq("id", invite.id).is("auth_user_id", null);
     if (profile.error || pending.error) {
       await admin.auth.admin.deleteUser(userId);
       return respond(origin, 503, {
@@ -276,7 +299,7 @@ Deno.serve(async (request) => {
     await admin.from("fc_primeiro_acesso_tentativas").insert({
       ip_hash: ipHash,
       cpf_hash: cpfHash,
-      status: "CRIADO",
+        status: "CONVITE_ACEITO",
     });
     const client = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
       auth: { persistSession: false, autoRefreshToken: false },
