@@ -3,6 +3,9 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const allowedOrigins = new Set([
   "https://forte-vendas.onrender.com",
+  "https://forte-financeiro.onrender.com",
+  "https://forte-venda-externa.onrender.com",
+  "https://forte-carga-direta.onrender.com",
   "http://localhost:5178",
 ]);
 
