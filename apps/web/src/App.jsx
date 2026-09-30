@@ -3546,6 +3546,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   });
   const [itensConfirmados, setItensConfirmados] = useState(false);
   const [pag, setPag] = useState("A VISTA");
+  const [pagamentosMistos, setPagamentosMistos] = useState([]);
   const [entrega, setEntrega] = useState("SEM ENTREGA");
   const [motoristaId, setMotoristaId] = useState("");
   const [destinoEntrega, setDestinoEntrega] = useState("");
@@ -3727,13 +3728,11 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         v.regraPagamento?.entraCaixa !== false,
     );
     const totalVendas = vv.reduce((s, v) => s + Number(v.total || 0), 0);
-    const porForma = vv.reduce(
-      (a, v) => (
-        (a[v.pagamento] = (a[v.pagamento] || 0) + Number(v.total || 0)),
-        a
-      ),
-      {},
-    );
+    const porForma = vv.reduce((a, v) => {
+      const formas = (v.pagamentos || []).length ? v.pagamentos : [{ forma: v.pagamento || "NÃO INFORMADO", valor: Number(v.total || 0) }];
+      formas.forEach((fp) => { a[fp.forma || "NÃO INFORMADO"] = (a[fp.forma || "NÃO INFORMADO"] || 0) + Number(fp.valor || 0); });
+      return a;
+    }, {});
     const dinheiro = Number(porForma["DINHEIRO"] || porForma["A VISTA"] || 0);
     const saldoEsperado = Number(caixaAberto.saldoInicial || 0) + dinheiro;
     const geradaEm = nowISO();
@@ -3791,7 +3790,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     );
     const totalVendas = vv.reduce((s, v) => s + Number(v.total || 0), 0);
     const porForma = vv.reduce((a, v) => {
-      a[v.pagamento || "NÃO INFORMADO"] = (a[v.pagamento || "NÃO INFORMADO"] || 0) + Number(v.total || 0);
+      const formas = (v.pagamentos || []).length ? v.pagamentos : [{ forma: v.pagamento || "NÃO INFORMADO", valor: Number(v.total || 0) }];
+      formas.forEach((fp) => { a[fp.forma || "NÃO INFORMADO"] = (a[fp.forma || "NÃO INFORMADO"] || 0) + Number(fp.valor || 0); });
       return a;
     }, {});
     const dinheiro = Number(porForma["DINHEIRO"] || porForma["A VISTA"] || 0);
@@ -4756,10 +4756,18 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       (entrega === "COM ENTREGA" && responsavelFrete === "FORTE ATACAREJO"
         ? fretePreview
         : 0);
+    const formasVenda = pagamentosMistos.length
+      ? pagamentosMistos.filter((x) => x.forma && Number(x.valor || 0) > 0).map((x) => ({ forma: x.forma, valor: Number(x.valor || 0) }))
+      : [{ forma: pag, valor: valorOperacao }];
+    const somaPagamentos = formasVenda.reduce((a, x) => a + Number(x.valor || 0), 0);
+    if (status === "CONCLUÍDA" && Math.abs(somaPagamentos - valorOperacao) > 0.009)
+      return alert(`PAGAMENTO MISTO NÃO CONFERE.\n\nTOTAL DA VENDA: ${money(valorOperacao)}\nFORMAS INFORMADAS: ${money(somaPagamentos)}\nDIFERENÇA: ${money(valorOperacao - somaPagamentos)}`);
+    const regrasFormas = formasVenda.map((fp) => ({ fp, regra: pagamentos.find((x) => x.descricao === fp.forma) || {} }));
     const formaRegra = pagamentos.find((x) => x.descricao === pag) || {};
+
     const regraPagamento = {
-      entraCaixa: formaRegra.entraCaixa !== false,
-      geraContasReceber: formaRegra.geraContasReceber !== false,
+      entraCaixa: regrasFormas.some(({ regra }) => regra.entraCaixa !== false),
+      geraContasReceber: regrasFormas.some(({ regra }) => regra.geraContasReceber !== false),
       recebidoNaHora: !!formaRegra.recebidoNaHora,
       exigeComprovante: !!formaRegra.exigeComprovante,
       exigeConciliacao: !!formaRegra.exigeConciliacao,
@@ -4819,7 +4827,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           ? fretePreview
           : 0,
       total: valorOperacao,
-      pagamento: pag,
+      pagamento: formasVenda.length > 1 ? "PAGAMENTO MISTO" : formasVenda[0]?.forma || pag,
+      pagamentos: formasVenda,
       vendedor: currentUser?.nome || "",
       motoristaId: entrega === "COM ENTREGA" ? motoristaId : "",
       motorista: entrega === "COM ENTREGA" ? m?.nome || "" : "",
@@ -5197,6 +5206,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     setItens((v.itens || []).map((x) => ({ ...x })));
     setItensConfirmados(true);
     setPag(v.pagamento || "A VISTA");
+    setPagamentosMistos((v.pagamentos || []).map((x) => ({ ...x })));
     setEntrega(v.entrega || "SEM ENTREGA");
     setMotoristaId(v.motoristaId || "");
     setDestinoEntrega(v.destinoEntrega || "");
@@ -5452,7 +5462,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         `VENDA ${i + 1} — ${v.numeroVenda || v.id} — ${v.dataHora ? new Date(v.dataHora).toLocaleString("pt-BR") : formatDateBR(v.data)}`,
         `CLIENTE: ${v.cliente || "-"} | DESTINO/OBRA: ${v.destinoEntrega || "-"}`,
         `ITENS: ${(v.itens || []).map((it) => `${it.marca ? it.marca + " — " : ""}${it.produto} ${it.qtd} SC`).join(" / ") || "-"}`,
-        `PAGAMENTO: ${v.pagamento || "-"} | PRODUTOS: ${money(v.subtotal || 0)} | FRETE: ${money(v.frete || 0)} | TOTAL: ${money(v.total || 0)}`,
+        `PAGAMENTO: ${(v.pagamentos||[]).length ? v.pagamentos.map(fp => `${fp.forma} ${money(fp.valor)}`).join(" + ") : (v.pagamento || "-")} | PRODUTOS: ${money(v.subtotal || 0)} | FRETE: ${money(v.frete || 0)} | TOTAL: ${money(v.total || 0)}`,
         `MOTORISTA/ENTREGA: ${v.motorista || "-"} | COMPROVANTES: ${(data.comprovantesClientes || []).filter((cp) => cp.vendaId === v.id || cp.operacaoId === v.id).length}`,
         `STATUS: ${v.status || "-"}`,
         "",
@@ -5700,6 +5710,19 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             ))}
           </select>
         </Field>
+        <div className="transportBox" style={{gridColumn:"1 / -1"}}>
+          <h3>PAGAMENTO MISTO</h3>
+          <p>OPCIONAL. ADICIONE DUAS OU MAIS FORMAS; A SOMA DEVE SER EXATAMENTE IGUAL AO TOTAL DA VENDA.</p>
+          {(pagamentosMistos||[]).map((fp,i)=><div className="miniGrid" key={i}>
+            <Field label={`FORMA ${i+1}`}><select value={fp.forma||""} onChange={e=>setPagamentosMistos(a=>a.map((x,j)=>j===i?{...x,forma:e.target.value}:x))}><option value="">SELECIONE...</option>{pagamentos.map(p=><option key={p.id}>{p.descricao}</option>)}</select></Field>
+            <Field label="VALOR"><input type="number" step="0.01" min="0" value={fp.valor??""} onChange={e=>setPagamentosMistos(a=>a.map((x,j)=>j===i?{...x,valor:e.target.value}:x))}/></Field>
+            <button type="button" className="dangerBtn" onClick={()=>setPagamentosMistos(a=>a.filter((_,j)=>j!==i))}>REMOVER</button>
+          </div>)}
+          <div className="actions">
+            <button type="button" className="secondary" onClick={()=>setPagamentosMistos(a=>[...a,{forma:a.length? "":pag,valor:""}])}>+ ADICIONAR FORMA</button>
+            {!!pagamentosMistos.length&&<b>SOMA INFORMADA: {money(pagamentosMistos.reduce((a,x)=>a+Number(x.valor||0),0))} • TOTAL DA VENDA: {money(subtotalPreview+(entrega==="COM ENTREGA"&&responsavelFrete==="FORTE ATACAREJO"?fretePreview:0))}</b>}
+          </div>
+        </div>
       </div>
       <h3>ITENS DA VENDA</h3>
       <div className="miniGrid">
