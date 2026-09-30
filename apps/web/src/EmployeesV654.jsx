@@ -60,6 +60,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [quickInvite, setQuickInvite] = useState({ nome:"", whatsapp:"" });
   const isAdmin = !!currentUser?.admin;
   const isMaster = !!currentUser?.master;
   const employees = data.funcionarios || [];
@@ -179,6 +180,21 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     finally { setBusy(false); }
   }
 
+  async function sendQuickInvite() {
+    const nome = quickInvite.nome.trim().split(/\s+/)[0];
+    const whatsapp = onlyDigits(quickInvite.whatsapp);
+    if (nome.length < 2 || whatsapp.length < 10) return setMessage("INFORME O PRIMEIRO NOME E O WHATSAPP COM DDD.");
+    setBusy(true); setMessage("PREPARANDO CONVITE…");
+    const { data: invite, error } = await supabase.functions.invoke("invite-employee", { body:{ nome, whatsapp } });
+    if (error) setMessage("NÃO FOI POSSÍVEL PREPARAR O CONVITE.");
+    else {
+      setMessage(invite?.message || "CONVITE PREPARADO.");
+      setQuickInvite({ nome:"", whatsapp:"" });
+      if (invite?.whatsappUrl) window.open(invite.whatsappUrl, "_blank", "noopener,noreferrer");
+    }
+    setBusy(false);
+  }
+
   function editEmployee(employee) { setForm({ ...defaults, ...employee, documento: null }); setMessage(""); }
   async function decidePending(item, action) {
     const verb = action === "APPROVE" ? "APROVAR" : "RECUSAR";
@@ -208,6 +224,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
 
   return <div className="modalBackdrop"><section className="modal employeeModal">
     <div className="modalHead"><div><h2>FUNCIONÁRIOS E PERMISSÕES</h2><p>CADASTRO ADMINISTRADO EXCLUSIVAMENTE POR ADMIN OU MASTER.</p></div><button className="ghost dark" onClick={onClose}>FECHAR</button></div>
+    <div className="employeeForm"><label className="field">PRIMEIRO NOME<input value={quickInvite.nome} onChange={(e)=>setQuickInvite((old)=>({...old,nome:e.target.value}))} placeholder="EX.: JULIANA"/></label><label className="field">WHATSAPP COM DDD<input value={quickInvite.whatsapp} onChange={(e)=>setQuickInvite((old)=>({...old,whatsapp:e.target.value}))} placeholder="EX.: 64 99999-9999"/></label><button type="button" disabled={busy} onClick={sendQuickInvite}>ENVIAR CONVITE PELO WHATSAPP</button><div className="note">O FUNCIONÁRIO COMPLETA OS DADOS, CRIA A SENHA E AGUARDA A APROVAÇÃO DO ADMIN OU MASTER.</div></div>
     <div className="employeeWorkflow"><b>1. ANEXAR DOCUMENTO</b><span>2. IA PREENCHE</span><span>3. ADMIN CONFERE PERMISSÕES</span><span>4. CONVITE POR E-MAIL</span></div>
     <div className="employeeForm">
       <label className="field">CNH OU IDENTIDADE COM CPF<input type="file" accept=".pdf,image/*" onChange={(e)=>setForm((old)=>({...old,documento:e.target.files?.[0] || null,documentoVencido:false,alertaDocumento:"",cpfConferido:false}))}/><small>{form.documento?.name || form.documentoNome || "DOCUMENTO OBRIGATÓRIO"}{form.documentoVencido ? " — VENCIDO / SUBSTITUIR" : ""}</small></label>
