@@ -4759,6 +4759,9 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     const formasVenda = pagamentosMistos.length
       ? pagamentosMistos.filter((x) => x.forma && Number(x.valor || 0) > 0).map((x) => ({ forma: x.forma, valor: Number(x.valor || 0) }))
       : [{ forma: pag, valor: valorOperacao }];
+    const formasInvalidas = pagamentosMistos.length && formasVenda.length !== pagamentosMistos.length;
+    if (status === "CONCLUÍDA" && formasInvalidas)
+      return alert("PAGAMENTO MISTO INCOMPLETO. INFORME A FORMA E O VALOR DE TODAS AS LINHAS OU REMOVA A LINHA VAZIA.");
     const somaPagamentos = formasVenda.reduce((a, x) => a + Number(x.valor || 0), 0);
     if (status === "CONCLUÍDA" && Math.abs(somaPagamentos - valorOperacao) > 0.009)
       return alert(`PAGAMENTO MISTO NÃO CONFERE.\n\nTOTAL DA VENDA: ${money(valorOperacao)}\nFORMAS INFORMADAS: ${money(somaPagamentos)}\nDIFERENÇA: ${money(valorOperacao - somaPagamentos)}`);
@@ -4776,7 +4779,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     if (
       status === "CONCLUÍDA" &&
       regraPagamento.geraContasReceber &&
-      isCreditSale(pag)
+      formasVenda.some((fp) => isCreditSale(fp.forma))
     ) {
       const cred = customerCredit(data, c.id);
       const disponivel = original
