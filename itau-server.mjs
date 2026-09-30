@@ -57,6 +57,23 @@ const setupPage = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta
 
 const server = http.createServer(async (req, res) => {
   try {
+    const requestUrl = new URL(req.url, "https://forte-itau-api.onrender.com");
+    if (requestUrl.pathname === "/webhooks/whatsapp" && req.method === "GET") {
+      const mode = requestUrl.searchParams.get("hub.mode");
+      const token = requestUrl.searchParams.get("hub.verify_token");
+      const challenge = requestUrl.searchParams.get("hub.challenge");
+      if (mode === "subscribe" && token === required("WHATSAPP_VERIFY_TOKEN")) {
+        return send(res, 200, challenge || "", "text/plain; charset=utf-8");
+      }
+      return send(res, 403, { error: "Falha na verificação do webhook" });
+    }
+    if (requestUrl.pathname === "/webhooks/whatsapp" && req.method === "POST") {
+      const raw = await readBody(req);
+      let payload = {};
+      try { payload = raw ? JSON.parse(raw) : {}; } catch {}
+      console.log("WhatsApp webhook recebido", JSON.stringify(payload));
+      return send(res, 200, "EVENT_RECEIVED", "text/plain; charset=utf-8");
+    }
     if (req.method === "GET" && req.url === "/health") {
       const configured = Boolean(process.env.ITAU_CLIENT_ID && process.env.ITAU_CLIENT_SECRET && process.env.ITAU_CERTIFICATE && process.env.ITAU_PRIVATE_KEY);
       return send(res, configured ? 200 : 503, { service: "forte-itau-api", configured });
