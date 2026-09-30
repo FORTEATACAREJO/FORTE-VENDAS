@@ -190,3 +190,15 @@ body{font-size:15px!important}.sideNav>button{font-size:11px!important}.dashboar
 
 /* V6.7.0 — painéis consolidados de vendas e InfinitePay */
 .salesFilters{display:grid;grid-template-columns:minmax(280px,1fr) 260px;gap:10px;margin:12px 0}.salesKpis,.counterKpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin:12px 0}.salesKpis>div,.counterKpis>div{display:grid;gap:5px;padding:14px;border:1px solid #dbe3f0;border-radius:12px;background:linear-gradient(135deg,#f8fbff,#eef4ff)}.salesKpis small,.counterKpis small{font-size:9px;font-weight:800;color:#5f6b7a}.salesKpis b,.counterKpis b{font-size:17px;color:#133d75}.counterKpis>div:nth-child(1){background:#eaf3ff}.counterKpis>div:nth-child(2){background:#eafaf0}.counterKpis>div:nth-child(3){background:#fff4df}.salesTableWrap{overflow:auto;border:1px solid #dfe5ee;border-radius:11px}.salesTable{width:100%;border-collapse:collapse;min-width:1050px}.salesTable th{position:sticky;top:0;background:#173f75;color:#fff;font-size:9px;text-align:left;padding:9px}.salesTable td{padding:9px;border-bottom:1px solid #edf0f5;font-size:10px;white-space:nowrap}.salesTable td small{display:block;color:#6b7280}.salesTable tbody tr:hover{background:#f5f8ff}.infinitePanel .note{border-left:4px solid #6d35d5;background:#f7f2ff;padding:10px}@media(max-width:720px){.salesFilters{grid-template-columns:1fr}.salesKpis,.counterKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Acesso legível no celular, sem controles em linha. */
+.authPage{min-height:100dvh;padding:24px 16px;box-sizing:border-box;font-size:16px}
+.authCard{box-sizing:border-box;width:100%;max-width:480px;padding:28px;gap:18px}
+.authCard form{display:grid;gap:12px;min-width:0}
+.authCard h1{font-size:clamp(24px,6vw,30px)!important;line-height:1.2;overflow-wrap:break-word;margin-bottom:8px}
+.authCard label{font-size:16px!important;font-weight:700;color:#163c70}
+.authCard input,.authCard button{box-sizing:border-box;width:100%;min-width:0;min-height:52px;font-size:16px!important;line-height:1.4}
+.authCard small,.authCard p,.authMessage{font-size:15px!important;line-height:1.5;overflow-wrap:anywhere}
+.authCard button:disabled{opacity:.65;cursor:wait}
+.authCard input:focus-visible,.authCard button:focus-visible{outline:3px solid #8bbcff;outline-offset:2px}
+@media(max-width:600px){.authPage{padding:16px 12px}.authCard{padding:24px 20px;border-radius:16px}}
