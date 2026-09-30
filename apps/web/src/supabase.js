@@ -6,3 +6,25 @@ let authContext=null; export const setAuthContext=(v)=>{authContext=v}; export c
 export function applyAuthUser(data){if(!authContext?.user||!authContext?.profile)return data;const p=authContext.profile,id=`auth-${authContext.user.id}`,perfil=String(p.perfil||"CONSULTA").toUpperCase();const u={id,authUserId:authContext.user.id,empresaId:p.empresa_id,unidadeId:p.unidade_id,nome:p.nome||authContext.user.email,login:authContext.user.email,email:authContext.user.email,perfil,ativo:p.ativo!==false,admin:["MASTER","ADMINISTRADOR"].includes(perfil),master:perfil==="MASTER",permissoes:p.permissoes||{}};return{...data,currentUserId:id,usuarios:[u,...(data.usuarios||[]).filter(x=>x.id!==id)]}}
 export async function loadCloudState(){if(!supabase)return null;const{data,error}=await supabase.from("fc_app_state").select("estado").maybeSingle();if(error)throw error;return data?.estado||null}
 export async function saveCloudState(estado){if(!supabase||!authContext?.profile?.empresa_id)return;const{error}=await supabase.from("fc_app_state").upsert({empresa_id:authContext.profile.empresa_id,estado,updated_by:authContext.user.id,updated_at:new Date().toISOString()},{onConflict:"empresa_id"});if(error)throw error}
+
+export async function saveClosedCashSnapshot(snapshot){
+  if(!supabase||!authContext?.profile?.empresa_id||!snapshot?.id)return;
+  const row={
+    id:String(snapshot.id),
+    empresa_id:authContext.profile.empresa_id,
+    data:snapshot.data,
+    unidade:snapshot.unidade||null,
+    operador:snapshot.operador||snapshot.fechadoPor||null,
+    aberto_em:snapshot.abertoEm||null,
+    fechado_em:snapshot.fechadoEm||new Date().toISOString(),
+    status:snapshot.status||"FECHADO",
+    total_vendas:Number(snapshot.totalVendas||0),
+    saldo_inicial:Number(snapshot.saldoInicial||0),
+    saldo_esperado:Number(snapshot.saldoEsperado||0),
+    saldo_contado:Number(snapshot.saldoContado||0),
+    diferenca:Number(snapshot.diferenca||0),
+    snapshot
+  };
+  const {error}=await supabase.from("fc_caixa_fechamentos").upsert(row,{onConflict:"id"});
+  if(error)throw error;
+}
