@@ -24,7 +24,7 @@ import {
 } from "@forte/core";
 import { seed } from "./seed";
 import { loadData, saveData, resetData } from "./storage";
-import { applyAuthUser, loadCloudState, saveCloudState, supabase, supabaseConfigured } from "./supabase";
+import { applyAuthUser, loadCloudState, saveCloudState, saveClosedCashSnapshot, supabase, supabaseConfigured } from "./supabase";
 import { putFile, getFile, openFile, downloadFile } from "./fileStore";
 import { lerXmlNfe, gerarDanfeSimplificadoPdf } from "./nfe";
 import { connectionMissingFields, normalizeBankEventStatus } from "./banking";
@@ -3787,19 +3787,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   function fecharCaixa() {
     if (!caixaAberto) return alert("NÃO HÁ CAIXA ABERTO PARA ESTA UNIDADE.");
     const vv = (data.vendasBalcao || []).filter(
-      (v) =>
-        v.caixaId === caixaAberto.id &&
-        v.status === "CONCLUÍDA" &&
-        v.regraPagamento?.entraCaixa !== false,
+      (v) => v.caixaId === caixaAberto.id && v.status === "CONCLUÍDA" && v.regraPagamento?.entraCaixa !== false,
     );
     const totalVendas = vv.reduce((s, v) => s + Number(v.total || 0), 0);
-    const porForma = vv.reduce(
-      (a, v) => (
-        (a[v.pagamento] = (a[v.pagamento] || 0) + Number(v.total || 0)),
-        a
-      ),
-      {},
-    );
+    const porForma = vv.reduce((a, v) => {
+      a[v.pagamento || "NÃO INFORMADO"] = (a[v.pagamento || "NÃO INFORMADO"] || 0) + Number(v.total || 0);
+      return a;
+    }, {});
     const dinheiro = Number(porForma["DINHEIRO"] || porForma["A VISTA"] || 0);
     const saldoEsperado = Number(caixaAberto.saldoInicial || 0) + dinheiro;
     const informado = prompt(
@@ -3811,81 +3805,78 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     const diferenca = saldoContado - saldoEsperado;
     let justificativa = "";
     if (Math.abs(diferenca) > 0.009) {
-      justificativa = upper(
-        prompt(
-          `DIVERGÊNCIA DE ${money(diferenca)}. INFORME A JUSTIFICATIVA:`,
-        ) || "",
-      );
-      if (!justificativa)
-        return alert(
-          "FECHAMENTO NÃO CONFIRMADO: JUSTIFICATIVA OBRIGATÓRIA PARA DIVERGÊNCIA.",
-        );
+      justificativa = upper(prompt(`DIVERGÊNCIA DE ${money(diferenca)}. INFORME A JUSTIFICATIVA:`) || "");
+      if (!justificativa) return alert("FECHAMENTO NÃO CONFIRMADO: JUSTIFICATIVA OBRIGATÓRIA PARA DIVERGÊNCIA.");
     }
-    if (
-      !confirm(
-        `ATENÇÃO — FECHAMENTO DE CAIXA\n\nTOTAL DE VENDAS: ${money(totalVendas)}\nSALDO ESPERADO: ${money(saldoEsperado)}\nSALDO CONTADO: ${money(saldoContado)}\nDIFERENÇA: ${money(diferenca)}\n\nDESEJA CONFIRMAR O FECHAMENTO?`,
-      )
-    )
-      return;
+    if (!confirm(`ATENÇÃO — FECHAMENTO DE CAIXA\n\nTOTAL DE VENDAS: ${money(totalVendas)}\nSALDO ESPERADO: ${money(saldoEsperado)}\nSALDO CONTADO: ${money(saldoContado)}\nDIFERENÇA: ${money(diferenca)}\n\nDESEJA CONFIRMAR O FECHAMENTO?`)) return;
+
     const fechadoEm = new Date().toISOString();
-    onChange((d) => ({
-      ...d,
-      caixasBalcao: (d.caixasBalcao || []).map((x) =>
-        x.id === caixaAberto.id
-          ? {
-              ...x,
-              status: "FECHADO",
-              fechadoEm,
-              fechadoPor: currentUser?.nome || "",
-              totalVendas,
-              porForma,
-              vendaIds: vv.map((v) => v.id),
-              saldoEsperado,
-              saldoContado,
-              diferenca,
-              justificativa,
-              estoqueSnapshot: (d.produtos || []).map((p) => {
-                const movimentos = (d.estoqueMov || []).filter((m) =>
-                  m.produtoId === p.id &&
-                  (!m.unidade || m.unidade === caixaAberto.unidade) &&
-                  String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) <= fechadoEm
-                );
-                const abertura = String(caixaAberto.abertoEm || caixaAberto.data + "T00:00:00");
-                const noDia = movimentos.filter((m) => String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) >= abertura);
-                const saldoFinal = buildStockLedger(d, caixaAberto.unidade, p.id).filter((m) =>
-                  String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) <= fechadoEm
-                ).at(-1)?.saldo || 0;
-                const entradas = noDia.filter((m) => String(m.tipo||"").startsWith("ENTRADA")).reduce((a,m)=>a+Number(m.quantidade||0),0);
-                const saidas = noDia.filter((m) => String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.quantidade||0),0);
-                const ajustes = noDia.filter((m) => !String(m.tipo||"").startsWith("ENTRADA") && !String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.ajuste??m.quantidade??0),0);
-                return {produtoId:p.id,produto:p.nome,marca:p.marca,saldoInicial:saldoFinal-entradas+saidas-ajustes,entradas:entradas+Math.max(0,ajustes),saidas:saidas+Math.max(0,-ajustes),saldoFinal};
-              }).filter((p)=>p.saldoInicial||p.entradas||p.saidas||p.saldoFinal),
-              titulosSnapshot: {
-                receber: (d.contasReceber || []).filter(t=>t.vencimento===caixaAberto.data).map(t=>({id:t.id,cliente:t.cliente||t.titulo,valor:t.valor,status:t.status})),
-                pagar: (d.contasPagar || []).filter(t=>t.vencimento===caixaAberto.data && (!t.preConferenciaId || (d.preConferenciaBoletos||[]).some(b=>b.id===t.preConferenciaId && b.status==="INCORPORADO AO CONTAS A PAGAR"))).map(t=>({id:t.id,fornecedor:t.fornecedor,valor:t.valor,status:t.status}))
-              },
-              creditosClientesSnapshot: (d.clientes || [])
-                .map((cli) => ({
-                  clienteId: cli.id,
-                  cliente: cli.nome,
-                  saldo: (d.creditosClientes || [])
-                    .filter(
-                      (cr) =>
-                        cr.clienteId === cli.id && cr.status !== "UTILIZADO",
-                    )
-                    .reduce(
-                      (a, cr) => a + Number(cr.saldo ?? cr.valor ?? 0),
-                      0,
-                    ),
-                }))
-                .filter((cr) => cr.saldo > 0),
-            }
-          : x,
-      ),
+    const abertura = String(caixaAberto.abertoEm || caixaAberto.data + "T00:00:00");
+    const ativos = (data.produtos || []).filter((p) => p.ativo !== false);
+    const vendaProduto = {};
+    vv.forEach((v) => (v.itens || []).forEach((it) => {
+      const k = it.produtoId || it.id || it.produto;
+      const q = Number(it.qtd || it.quantidade || 0);
+      const valor = Number(it.subtotal || q * Number(it.precoUnitario || it.preco || 0));
+      vendaProduto[k] ||= { qtd: 0, valor: 0 };
+      vendaProduto[k].qtd += q; vendaProduto[k].valor += valor;
     }));
-    alert(
-      "CAIXA FECHADO E GRAVADO NO HISTÓRICO. O SALDO DE CRÉDITOS DOS CLIENTES FOI CONGELADO NESTE FECHAMENTO.",
-    );
+    const orcamentosAtivos = (data.vendasBalcao || []).filter((v) => ["ORÇAMENTO","PARCIALMENTE ATENDIDO"].includes(v.status));
+    const estoqueSnapshot = ativos.map((p) => {
+      const movs = (data.estoqueMov || []).filter((m) => m.produtoId === p.id)
+        .filter((m) => String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) <= fechadoEm)
+        .slice().sort((x,y)=>String(x.dataHora||x.data||"").localeCompare(String(y.dataHora||y.data||"")));
+      let saldo=0, valorEstoque=0, custoMedio=0;
+      movs.forEach((m)=>{
+        const q=Number(m.quantidade||0), tipo=String(m.tipo||"");
+        if(tipo.startsWith("ENTRADA")){const cu=Number(m.custoUnitario||custoMedio||0);saldo+=q;valorEstoque+=q*cu;custoMedio=saldo?valorEstoque/saldo:0;}
+        else if(tipo.startsWith("SAÍDA")){valorEstoque-=q*custoMedio;saldo-=q;}
+        else {const aj=Number(m.ajuste??m.quantidade??0); if(aj>=0){const cu=Number(m.custoUnitario||custoMedio||0);saldo+=aj;valorEstoque+=aj*cu;}else{valorEstoque-=Math.abs(aj)*custoMedio;saldo+=aj;} custoMedio=saldo?valorEstoque/saldo:0;}
+      });
+      const periodo = movs.filter((m)=>String(m.dataHora || (m.data ? m.data + "T12:00:00" : "")) >= abertura);
+      const entradas = periodo.filter(m=>String(m.tipo||"").startsWith("ENTRADA")).reduce((a,m)=>a+Number(m.quantidade||0),0);
+      const vendasQtd = Number(vendaProduto[p.id]?.qtd || 0);
+      const outrasSaidas = Math.max(0, periodo.filter(m=>String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.quantidade||0),0)-vendasQtd);
+      const ajustes = periodo.filter(m=>!String(m.tipo||"").startsWith("ENTRADA")&&!String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.ajuste??m.quantidade??0),0);
+      const saldoInicial = saldo - entradas + vendasQtd + outrasSaidas - ajustes;
+      const bloqueadoOrcamento = orcamentosAtivos.reduce((a,o)=>a+(o.itens||[]).filter(it=>(it.produtoId||it.id||it.produto)===(p.id)).reduce((z,it)=>z+Number(it.qtd||it.quantidade||0),0),0);
+      const entradasDetalhe = periodo.filter(m=>String(m.tipo||"").startsWith("ENTRADA")).map(m=>({
+        dataHora:m.dataHora||m.data, nf:m.numeroNotaFiscal||m.nf||m.referencia||"", pedido:m.numeroPedido||m.pedido||"",
+        motorista:m.motorista||m.nomeMotorista||"", quantidade:Number(m.quantidade||0)
+      }));
+      return {produtoId:p.id,produto:p.nome,marca:p.marca,saldoInicial,entradas,vendas:vendasQtd,outrasSaidas,ajustes,
+        saldoFinal:saldo,bloqueadoOrcamento,disponivel:saldo-bloqueadoOrcamento,custoMedio,entradasDetalhe};
+    });
+    const resultadoFinanceiro = ativos.map((p)=>{
+      const vp=vendaProduto[p.id]||{qtd:0,valor:0};
+      const est=estoqueSnapshot.find(x=>x.produtoId===p.id)||{};
+      const precoMedio=vp.qtd?vp.valor/vp.qtd:0, custoMedio=Number(est.custoMedio||0);
+      const custoTotal=vp.qtd*custoMedio, lucroBruto=vp.valor-custoTotal;
+      return {produtoId:p.id,produto:p.nome,marca:p.marca,qtdVendida:vp.qtd,faturamento:vp.valor,precoMedioVenda:precoMedio,
+        custoMedioCongelado:custoMedio,custoTotal,lucroBrutoUnitario:precoMedio-custoMedio,lucroBrutoTotal:lucroBruto,
+        margemBrutaPct:vp.valor?lucroBruto/vp.valor*100:0};
+    });
+    const totalCusto=resultadoFinanceiro.reduce((a,x)=>a+x.custoTotal,0);
+    const totalLucro=resultadoFinanceiro.reduce((a,x)=>a+x.lucroBrutoTotal,0);
+    const formasConferencia={BOLETO:0,PIX:0,DINHEIRO:0,CARTÃO:0,CHEQUE:0};
+    Object.entries(porForma).forEach(([forma,valor])=>{
+      const f=upper(forma); let k="";
+      if(f.includes("PIX"))k="PIX"; else if(f.includes("DINHEIRO")||f==="A VISTA")k="DINHEIRO";
+      else if(f.includes("CART"))k="CARTÃO"; else if(f.includes("CHEQUE"))k="CHEQUE"; else if(f.includes("BOLETO")||f.includes("PRAZO"))k="BOLETO";
+      if(k)formasConferencia[k]+=Number(valor||0);
+    });
+    const caixaFechado={...caixaAberto,status:"FECHADO",fechadoEm,fechadoPor:currentUser?.nome||"",totalVendas,porForma,
+      formasConferencia,vendaIds:vv.map(v=>v.id),saldoEsperado,saldoContado,diferenca,justificativa,estoqueSnapshot,
+      resultadoFinanceiro,resumoFinanceiro:{faturamento:totalVendas,custoTotal:totalCusto,lucroBrutoTotal:totalLucro,margemBrutaPct:totalVendas?totalLucro/totalVendas*100:0},
+      titulosSnapshot:{
+        receber:(data.contasReceber||[]).filter(t=>t.vencimento===caixaAberto.data).map(t=>({id:t.id,cliente:t.cliente||t.titulo,valor:t.valor,status:t.status})),
+        pagar:(data.contasPagar||[]).filter(t=>t.vencimento===caixaAberto.data&&(!t.preConferenciaId||(data.preConferenciaBoletos||[]).some(b=>b.id===t.preConferenciaId&&b.status==="INCORPORADO AO CONTAS A PAGAR"))).map(t=>({id:t.id,fornecedor:t.fornecedor,valor:t.valor,status:t.status}))
+      },
+      creditosClientesSnapshot:(data.clientes||[]).map(cli=>({clienteId:cli.id,cliente:cli.nome,saldo:(data.creditosClientes||[]).filter(cr=>cr.clienteId===cli.id&&cr.status!=="UTILIZADO").reduce((a,cr)=>a+Number(cr.saldo??cr.valor??0),0)})).filter(cr=>cr.saldo>0)
+    };
+    onChange((d)=>({...d,caixasBalcao:(d.caixasBalcao||[]).map(x=>x.id===caixaAberto.id?caixaFechado:x)}));
+    saveClosedCashSnapshot(caixaFechado).catch(e=>console.error("FALHA AO GRAVAR HISTÓRICO DO CAIXA NO SUPABASE",e));
+    alert("CAIXA FECHADO, CONGELADO E ENVIADO AO HISTÓRICO FINANCEIRO.");
   }
   function numeroOrcamento() {
     const ano = new Date().getFullYear();
