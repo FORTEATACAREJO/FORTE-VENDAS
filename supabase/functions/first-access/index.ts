@@ -58,7 +58,7 @@ const cpfIsValid = (cpf: string) => {
   return true;
 };
 
-const passwordIsValid = (password: string) => /^\d{6}$/.test(password);
+const passwordIsValid = (password: string) => /^\d{6,}$/.test(password);
 
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin") || "";
@@ -88,7 +88,7 @@ Deno.serve(async (request) => {
     if (!cpfIsValid(cpf)) {
       return respond(origin, 400, { error: "CPF INVÁLIDO." });
     }
-    if (!/^55\d{10,11}$/.test(whatsapp)) {
+    if (!/^55[1-9]\d[2-9]\d{7,8}$/.test(whatsapp)) {
       return respond(origin, 400, {
         error: "WHATSAPP INVÁLIDO. INFORME DDD E NÚMERO.",
       });
@@ -312,3 +312,5 @@ Deno.serve(async (request) => {
     });
   }
 });
+
+

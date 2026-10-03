@@ -9,7 +9,7 @@ Deno.serve(async req=>{
  if(req.method!=="POST"||!origins.has(origin))return reply({error:"REQUISIÇÃO NÃO PERMITIDA."},403);
  try{
   const b=await req.json(),raw=String(b.cpf||""),cpf=raw.replace(/\D/g,""),password=b.password;
-  if(raw.includes("@")||!/^\d{11}$/.test(cpf)||typeof password!=="string"||!/^\d{6}$/.test(password))return fail();
+  if(raw.includes("@")||!/^\d{11}$/.test(cpf)||typeof password!=="string"||!/^\d{6,}$/.test(password))return fail();
   const url=Deno.env.get("SUPABASE_URL")!,key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
   const hkey=await crypto.subtle.importKey("raw",new TextEncoder().encode(key),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
@@ -32,3 +32,4 @@ Deno.serve(async req=>{
   return reply({access_token:login.data.session.access_token,refresh_token:login.data.session.refresh_token});
  }catch{return fail()}
 });
+

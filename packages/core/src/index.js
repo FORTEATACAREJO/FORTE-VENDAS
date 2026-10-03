@@ -4,5 +4,14 @@ export const PALLETS=["COM PALLETS","SEM PALLETS","LEVA PALLETS"];
 export const FRETES=["FOB","CIF"];
 export function palletText(v){return v==="LEVA PALLETS"?"LEVA PALLETS":v==="COM PALLETS"?"COM PALLETS (ENVIAR O PEDIDO PARA LIBERAÇÃO DE PALLETS)":"SEM PALLETS"}
 export function validateBrands(vendas){const marcas=[...new Set(vendas.map(v=>v.marca).filter(Boolean))];return{ok:marcas.length<=1,marcas}}
-export function validateCapacity(total,alvo,max){total=Number(total||0);alvo=Number(alvo||0);max=Number(max||alvo||0);const diff=total-alvo;if(!alvo)return{status:"PENDÊNCIA",diff,mensagem:"CAPACIDADE-ALVO NÃO CADASTRADA."};if(max>0&&total>max)return{status:"BLOQUEADO",diff,mensagem:"PESO ACIMA DA CAPACIDADE MÁXIMA/LEGAL DO VEÍCULO."};if(total===alvo)return{status:"CONFERE",diff:0,mensagem:"CONFERE — PESO IGUAL À CAPACIDADE-ALVO."};if(total<alvo)return{status:"PENDÊNCIA",diff,mensagem:"CARGA ABAIXO DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."};return{status:"PENDÊNCIA",diff,mensagem:"CARGA ACIMA DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."}}
+export function validateCapacity(total,alvo,max){
+  total=Number(total??0);alvo=Number(alvo??0);max=Number(max??0);
+  if(![total,alvo,max].every(Number.isFinite)||total<0||alvo<0||max<0||max>0&&alvo>max)return{status:"BLOQUEADO",diff:null,mensagem:"PESO OU CAPACIDADE INVÁLIDOS. CONFIRA OS VALORES CADASTRADOS."};
+  max=max||alvo;const diff=total-alvo;
+  if(!alvo)return{status:"PENDÊNCIA",diff,mensagem:"CAPACIDADE-ALVO NÃO CADASTRADA."};
+  if(max>0&&total>max)return{status:"BLOQUEADO",diff,mensagem:"PESO ACIMA DA CAPACIDADE MÁXIMA/LEGAL DO VEÍCULO."};
+  if(total===alvo)return{status:"CONFERE",diff:0,mensagem:"CONFERE — PESO IGUAL À CAPACIDADE-ALVO."};
+  if(total<alvo)return{status:"PENDÊNCIA",diff,mensagem:"CARGA ABAIXO DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."};
+  return{status:"PENDÊNCIA",diff,mensagem:"CARGA ACIMA DA CAPACIDADE-ALVO — LIBERAÇÃO EXIGE JUSTIFICATIVA."};
+}
 export function requiredDocs(carga){const docs=["NF PRINCIPAL DO PRODUTO","BOLETO/TÍTULO DO FORNECEDOR"];if(carga?.pallet==="COM PALLETS")docs.splice(1,0,"NF DE PALLETS");if(carga?.modalidadeFrete==="FOB")docs.push("COMPROVANTE DE PAGAMENTO DO FRETE");return docs}
