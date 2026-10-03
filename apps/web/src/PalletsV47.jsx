@@ -3,7 +3,7 @@ import React,{useMemo,useState}from"react";
 const up=v=>String(v||"").trim().toUpperCase();
 const id=()=>`pal-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 const now=()=>new Date().toISOString();
-const signed=(m,local)=>m.destino===local?Number(m.quantidade||0):m.origem===local?-Number(m.quantidade||0):0;
+const signed=(m,local)=>(m.destino===local?Number(m.quantidade||0):0)-(m.origem===local?Number(m.quantidade||0):0);
 
 export default function PalletsV47({data,onChange,audit,currentUser}){
  const fornecedores=(data.fornecedores||[]).filter(x=>x.ativo!==false);
@@ -23,11 +23,13 @@ export default function PalletsV47({data,onChange,audit,currentUser}){
  const patrimonio=legadoPatrimonio+movimentos.reduce((s,m)=>s+(m.afetaPatrimonio?Number(m.quantidade||0)*(m.tipo==="COMPRA"||m.tipo==="AJUSTE DE ENTRADA"?1:-1):0),0);
  const saldo=local=>movimentos.reduce((s,m)=>s+signed(m,local),0);
  const registrar=()=>{
-  const q=Number(form.quantidade||0);if(q<=0)return alert("INFORME A QUANTIDADE DE PALLETS.");
+  const q=Number(form.quantidade||0),custo=Number(form.custoUnitario||0);if(!Number.isSafeInteger(q)||q<=0)return alert("INFORME UMA QUANTIDADE INTEIRA E VÁLIDA DE PALLETS.");
+  if(!Number.isFinite(custo)||custo<0)return alert("INFORME UM CUSTO UNITÁRIO VÁLIDO.");
   if(["COMPRA","VENDA"].includes(form.tipo)&&!form.documento)return alert("INFORME A NOTA FISCAL DA COMPRA OU VENDA DE PALLETS.");
   if(["COMODATO A CLIENTE","RETORNO"].includes(form.tipo)&&!cliente)return alert("SELECIONE O CLIENTE PARA O CONTA-CORRENTE.");
   const origem=form.tipo==="COMPRA"?"FORA DO PATRIMÔNIO":form.tipo==="RETORNO"?"CLIENTE / COMODATO":form.origem;
   const destino=form.tipo==="VENDA"?"BAIXA DEFINITIVA":form.tipo==="COMODATO A CLIENTE"?"CLIENTE / COMODATO":form.destino;
+  if(origem===destino)return alert("ORIGEM E DESTINO DEVEM SER DIFERENTES.");
   if(form.tipo==="RETORNO"&&saldoCliente(cliente)<q)return alert(`RETORNO BLOQUEADO: ${cliente} POSSUI ${saldoCliente(cliente)} PALLET(S) EM COMODATO.`);
   if(!["COMPRA","AJUSTE DE ENTRADA","RETORNO"].includes(form.tipo)&&saldo(origem)<q)return alert(`MOVIMENTO BLOQUEADO: SALDO DISPONÍVEL EM ${origem}: ${saldo(origem)} PALLET(S).`);
   const movimento={id:id(),...form,cliente:["COMODATO A CLIENTE","RETORNO"].includes(form.tipo)?cliente:"",origem,destino,quantidade:q,custoUnitario:Number(form.custoUnitario||0),valorTotal:q*Number(form.custoUnitario||0),afetaPatrimonio:["COMPRA","VENDA","PERDA / AVARIA","AJUSTE DE ENTRADA","AJUSTE DE SAÍDA"].includes(form.tipo),dataHora:now(),usuario:currentUser?.nome||""};

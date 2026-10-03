@@ -28,6 +28,7 @@ import { applyAuthUser, loadCloudState, saveCloudState, saveClosedCashSnapshot, 
 import { putFile, getFile, openFile, downloadFile } from "./fileStore";
 import { lerXmlNfe, gerarDanfeSimplificadoPdf } from "./nfe";
 import { connectionMissingFields, normalizeBankEventStatus } from "./banking";
+import { parseMoneyInput, roundMoney, titleOpenAmount, isClosedTitle, customerCreditAvailable, cashPayments, cashAmountByMethod, undoSaleCredits } from "./financial.js";
 import {
   authorizeGmail,
   getGmailProfile,
@@ -3701,6 +3702,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   function abrirCaixa() {
     if (caixaAberto)
       return alert("JÁ EXISTE UM CAIXA ABERTO PARA ESTA UNIDADE HOJE.");
+    const abertura = parseMoneyInput(saldoInicial || "0");
+    if (!Number.isFinite(abertura) || abertura < 0) return alert("SALDO INICIAL INVÁLIDO.");
     onChange((d) => ({
       ...d,
       caixasBalcao: [
@@ -3711,7 +3714,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           unidade,
           operador: currentUser?.nome || "",
           abertoEm: new Date().toISOString(),
-          saldoInicial: Number(saldoInicial || 0),
+          saldoInicial: abertura,
           status: "ABERTO",
         },
       ],
@@ -3729,12 +3732,12 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     );
     const totalVendas = vv.reduce((s, v) => s + Number(v.total || 0), 0);
     const porForma = vv.reduce((a, v) => {
-      const formas = (v.pagamentos || []).length ? v.pagamentos : [{ forma: v.pagamento || "NÃO INFORMADO", valor: Number(v.total || 0) }];
+      const formas = cashPayments(v);
       formas.forEach((fp) => { a[fp.forma || "NÃO INFORMADO"] = (a[fp.forma || "NÃO INFORMADO"] || 0) + Number(fp.valor || 0); });
       return a;
     }, {});
-    const dinheiro = Number(porForma["DINHEIRO"] || porForma["A VISTA"] || 0);
-    const saldoEsperado = Number(caixaAberto.saldoInicial || 0) + dinheiro;
+    const dinheiro = cashAmountByMethod(porForma);
+    const saldoEsperado = roundMoney(Number(caixaAberto.saldoInicial || 0) + dinheiro);
     const geradaEm = nowISO();
     const snapshot = {
       ...caixaAberto,
@@ -3790,19 +3793,19 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     );
     const totalVendas = vv.reduce((s, v) => s + Number(v.total || 0), 0);
     const porForma = vv.reduce((a, v) => {
-      const formas = (v.pagamentos || []).length ? v.pagamentos : [{ forma: v.pagamento || "NÃO INFORMADO", valor: Number(v.total || 0) }];
+      const formas = cashPayments(v);
       formas.forEach((fp) => { a[fp.forma || "NÃO INFORMADO"] = (a[fp.forma || "NÃO INFORMADO"] || 0) + Number(fp.valor || 0); });
       return a;
     }, {});
-    const dinheiro = Number(porForma["DINHEIRO"] || porForma["A VISTA"] || 0);
-    const saldoEsperado = Number(caixaAberto.saldoInicial || 0) + dinheiro;
+    const dinheiro = cashAmountByMethod(porForma);
+    const saldoEsperado = roundMoney(Number(caixaAberto.saldoInicial || 0) + dinheiro);
     const informado = prompt(
       `FECHAMENTO DE CAIXA\n\nTOTAL DE VENDAS: ${money(totalVendas)}\nDINHEIRO NO CAIXA ESPERADO: ${money(saldoEsperado)}\n\nINFORME O SALDO FÍSICO / CONTADO:`,
     );
     if (informado === null) return;
-    const saldoContado = Number(String(informado).replace(",", "."));
-    if (Number.isNaN(saldoContado)) return alert("SALDO CONTADO INVÁLIDO.");
-    const diferenca = saldoContado - saldoEsperado;
+    const saldoContado = parseMoneyInput(informado);
+    if (!Number.isFinite(saldoContado) || saldoContado < 0) return alert("SALDO CONTADO INVÁLIDO.");
+    const diferenca = roundMoney(saldoContado - saldoEsperado);
     let justificativa = "";
     if (Math.abs(diferenca) > 0.009) {
       justificativa = upper(prompt(`DIVERGÊNCIA DE ${money(diferenca)}. INFORME A JUSTIFICATIVA:`) || "");
@@ -4038,13 +4041,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     );
   function creditoDisponivelCliente(cid, source = data) {
     return (source.creditosClientes || [])
-      .filter(
-        (x) =>
-          x.clienteId === cid &&
-          x.status !== "UTILIZADO" &&
-          Number(x.saldo ?? x.valor ?? 0) > 0,
-      )
-      .reduce((a, x) => a + Number(x.saldo ?? x.valor ?? 0), 0);
+      .filter((x) => x.clienteId === cid)
+      .reduce((a, x) => roundMoney(a + customerCreditAvailable(x)), 0);
   }
   function gerarRelatorioOrcamentos() {
     pdfTabela(
@@ -4178,10 +4176,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       `VENDA PARCIAL POR VALOR — ${o.numeroOrcamento || o.id}\n\nCRÉDITO DISPONÍVEL DO CLIENTE: ${money(creditoAntes)}\n\nINFORME O NOVO VALOR RECEBIDO PELO CLIENTE:`,
     );
     if (entrada === null) return;
-    const valorRecebido = Number(
-      String(entrada).replace(/\./g, "").replace(",", "."),
-    );
-    if (Number.isNaN(valorRecebido) || valorRecebido < 0)
+    const valorRecebido = parseMoneyInput(entrada);
+    if (!Number.isFinite(valorRecebido) || valorRecebido < 0)
       return alert("VALOR RECEBIDO INVÁLIDO.");
     const usarCredito =
       creditoAntes > 0 &&
@@ -4273,6 +4269,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       status: "CONCLUÍDA",
       origemVendaParcial: "VALOR RECEBIDO",
     };
+    const totalRestanteApos = saldoBase.reduce((sum, item) => sum + Number(item.qtd || 0), 0) - itensVenda.reduce((sum, item) => sum + Number(item.qtd || 0), 0);
     onChange((d) => {
       const saldoNovo = saldoBase
         .map((base, saldoIdx) => {
@@ -4325,18 +4322,20 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       const statusOrc =
         totalRestante > 0 ? "PARCIALMENTE ATENDIDO" : "ATENDIDO";
       let creditoRestanteParaUsar = creditoUsado;
+      const creditosUtilizados = [];
       const creditosBase = (d.creditosClientes || []).map((cr) => {
         if (
           cr.clienteId !== o.clienteId ||
           creditoRestanteParaUsar <= 0 ||
-          cr.status === "UTILIZADO"
+          customerCreditAvailable(cr) <= 0
         )
           return cr;
         const saldoAtual = Number(cr.saldo ?? cr.valor ?? 0);
         if (saldoAtual <= 0) return cr;
         const usado = Math.min(saldoAtual, creditoRestanteParaUsar);
-        creditoRestanteParaUsar -= usado;
-        const novoSaldo = Math.round((saldoAtual - usado) * 100) / 100;
+        creditosUtilizados.push({creditoId:cr.id, valor:roundMoney(usado)});
+        creditoRestanteParaUsar = roundMoney(creditoRestanteParaUsar - usado);
+        const novoSaldo = roundMoney(saldoAtual - usado);
         return {
           ...cr,
           saldo: novoSaldo,
@@ -4355,6 +4354,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                 clienteId: o.clienteId,
                 cliente: o.cliente,
                 origem: `SALDO VENDA PARCIAL ${numeroVenda}`,
+                vendaId,
                 numeroOrcamento: o.numeroOrcamento,
                 valor: creditoGerado,
                 saldo: creditoGerado,
@@ -4387,7 +4387,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                 }
               : v,
           ),
-          venda,
+          {...venda, creditosUtilizados},
         ],
         creditosClientes: creditos,
         patioSaidas: d.patioSaidas || [], // histórico legado preservado; fluxo de liberação removido na V6.8.0
@@ -4402,7 +4402,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       .map((x) => `${x.produto}: ${x.qtd} SC`)
       .join("\n");
     alert(
-      `VENDA ${numeroVenda} GERADA.\n\n${itensResumo}\n\nNOVO VALOR RECEBIDO: ${money(valorRecebido)}\nCRÉDITO UTILIZADO: ${money(creditoUsado)}\nVALOR TOTAL DISPONÍVEL: ${money(valorAplicavel)}\nVALOR CONVERTIDO EM MERCADORIA/FRETE: ${money(vendaTotal)}\n${creditoGerado > 0 ? `NOVO CRÉDITO DO CLIENTE: ${money(creditoGerado)}\n` : ""}CRÉDITO DISPONÍVEL APÓS A OPERAÇÃO: ${money(creditoGerado)}\nSALDO DO ORÇAMENTO: ${totalRestante} SC.`,
+      `VENDA ${numeroVenda} GERADA.\n\n${itensResumo}\n\nNOVO VALOR RECEBIDO: ${money(valorRecebido)}\nCRÉDITO UTILIZADO: ${money(creditoUsado)}\nVALOR TOTAL DISPONÍVEL: ${money(valorAplicavel)}\nVALOR CONVERTIDO EM MERCADORIA/FRETE: ${money(vendaTotal)}\n${creditoGerado > 0 ? `NOVO CRÉDITO DO CLIENTE: ${money(creditoGerado)}\n` : ""}CRÉDITO DISPONÍVEL APÓS A OPERAÇÃO: ${money(usarCredito ? creditoGerado : creditoAntes + creditoGerado)}\nSALDO DO ORÇAMENTO: ${totalRestanteApos} SC.`,
     );
   }
   function anexarComprovanteOperacao(op, arquivo, movimentoId = "") {
@@ -5224,6 +5224,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       return alert(
         "VENDA BLOQUEADA: O CAIXA DESTA VENDA JÁ FOI FECHADO OU NÃO É O CAIXA ABERTO DE HOJE.",
       );
+    try { undoSaleCredits(data.creditosClientes || [], v); }
+    catch (error) { return alert(error.message); }
     const motivo = upper(
       prompt(
         `CANCELAR / ESTORNAR ${v.numeroVenda || v.id}\n\nINFORME O MOTIVO:`,
@@ -5291,9 +5293,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           };
         });
       }
-      const creditos = (d.creditosClientes || []).filter(
-        (cr) => !String(cr.origem || "").includes(v.numeroVenda || v.id),
-      );
+      const creditos = undoSaleCredits(d.creditosClientes || [], v);
       return {
         ...d,
         vendasBalcao: vb,
@@ -7156,20 +7156,10 @@ function SaudeFinanceira({ data, onChange }) {
     .filter((x) => x.ativo !== false)
     .reduce((a, x) => a + Number(x.saldo || 0), 0);
   const receber = (data.contasReceber || [])
-    .filter(
-      (x) =>
-        !upper(x.status).includes("LIQUIDADO") &&
-        !upper(x.status).includes("PAGO") &&
-        !upper(x.status).includes("RECEBIDO"),
-    )
-    .reduce((a, x) => a + Number(x.valor || 0), 0);
+    .reduce((a, x) => roundMoney(a + titleOpenAmount(x)), 0);
   const pagar = (data.contasPagar || [])
-    .filter(
-      (x) =>
-        !upper(x.status).includes("LIQUIDADO") &&
-        !upper(x.status).includes("PAGO"),
-    )
-    .reduce((a, x) => a + Number(x.valor || 0), 0);
+    .filter(x => !x.preConferenciaId || (data.preConferenciaBoletos || []).some(b => b.id === x.preConferenciaId && b.status === "INCORPORADO AO CONTAS A PAGAR"))
+    .reduce((a, x) => roundMoney(a + titleOpenAmount(x, "pagar")), 0);
   const estoque = (data.produtos || []).reduce((ss, p) => {
     const l = buildStockLedger(data, "ESTOQUE ÚNICO", p.id);
     return ss + Number(l[l.length - 1]?.valorEstoque || 0);
@@ -7189,6 +7179,8 @@ function SaudeFinanceira({ data, onChange }) {
   const emprestimos = data.emprestimos || [];
   function salvarConta() {
     if (!banco || saldo === "") return alert("INFORME BANCO E SALDO.");
+    const valorSaldo = parseMoneyInput(saldo);
+    if (!Number.isFinite(valorSaldo)) return alert("SALDO BANCÁRIO INVÁLIDO.");
     onChange((d) => ({
       ...d,
       contasBancarias: [
@@ -7200,7 +7192,7 @@ function SaudeFinanceira({ data, onChange }) {
           conta: upper(conta),
           tipo: tipoConta,
           unidade,
-          saldo: Number(saldo),
+          saldo: valorSaldo,
           ativo: true,
           atualizadoEm: nowISO(),
         },
@@ -7317,12 +7309,11 @@ function SaudeFinanceira({ data, onChange }) {
     let duplicados = 0;
     for (const l of linhas) {
       const m = l.match(
-        /(\d{2}[\/\-]\d{2}[\/\-]\d{2,4}).*?(-?\s*\d+[\.,]\d{2})/,
+        /(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})\b.*?(-?\s*\d+(?:[.,]\d{3})*[.,]\d{2})(?!\d)/,
       );
       if (m) {
-        const val = Number(
-          m[2].replace(/\s/g, "").replace(".", "").replace(",", "."),
-        );
+        const val = parseMoneyInput(m[2].replace(/\s/g, ""));
+        if (!Number.isFinite(val)) continue;
         const hist = l.slice(0, 180).trim();
         const chave = norm(`${m[1]}|${val.toFixed(2)}|${hist}`).replace(
           /\s+/g,
@@ -8326,8 +8317,8 @@ function RecebiveisItau({ data, onChange }) {
       return alert("SELECIONE A VENDA ANTES DE ANEXAR O COMPROVANTE.");
     const bruto = prompt("INFORME O VALOR RECEBIDO NESTE COMPROVANTE:");
     if (bruto === null) return;
-    const valor = Number(String(bruto).replace(/\./g, "").replace(",", "."));
-    if (!valor || valor <= 0) return alert("VALOR INVÁLIDO.");
+    const valor = parseMoneyInput(bruto);
+    if (!Number.isFinite(valor) || valor <= 0) return alert("VALOR INVÁLIDO.");
     const venda = vendas.find((x) => x.id === vendaRef);
     onChange((d) => {
       let restante = valor;
@@ -8336,19 +8327,16 @@ function RecebiveisItau({ data, onChange }) {
         if (
           t.vendaId !== vendaRef ||
           restante <= 0 ||
-          upper(t.status).includes("LIQUIDADO")
+          isClosedTitle(t)
         )
           return t;
         const atual = Number(t.valorRecebido || 0);
-        const saldo =
-          "saldoAberto" in t
-            ? Number(t.saldoAberto)
-            : Math.max(0, Number(t.valor || 0) - atual);
+        const saldo = titleOpenAmount(t);
         const aplicar = Math.min(restante, saldo);
         if (aplicar <= 0) return t;
-        restante -= aplicar;
-        const novoReceb = atual + aplicar;
-        const novoSaldo = Math.max(0, Number(t.valor || 0) - novoReceb);
+        restante = roundMoney(restante - aplicar);
+        const novoReceb = roundMoney(atual + aplicar);
+        const novoSaldo = roundMoney(Math.max(0, saldo - aplicar));
         return {
           ...t,
           valorRecebido: novoReceb,
@@ -8544,8 +8532,8 @@ function ContaCorrenteFornecedores({ data, onChange, currentUser }) {
       .reduce((a, x) => a + sinal(x), 0);
   async function registrar() {
     const f = fornecedores.find((x) => x.id === fornecedorId),
-      v = Number(valor || 0);
-    if (!f || v <= 0)
+      v = parseMoneyInput(valor);
+    if (!f || !Number.isFinite(v) || v <= 0)
       return alert("SELECIONE O FORNECEDOR E INFORME UM VALOR VÁLIDO.");
     if (tipo === "DEPÓSITO / ADIANTAMENTO" && !arquivo)
       return alert("ANEXE O COMPROVANTE DO DEPÓSITO / PAGAMENTO ANTECIPADO.");
@@ -8570,7 +8558,7 @@ function ContaCorrenteFornecedores({ data, onChange, currentUser }) {
       data: todayISO(),
       dataHora: nowISO(),
       usuario: currentUser?.nome || "",
-      saldoApos: saldo(f.id) + (tipo === "DEPÓSITO / ADIANTAMENTO" ? v : -v),
+      saldoApos: roundMoney(saldo(f.id) + (tipo === "DEPÓSITO / ADIANTAMENTO" ? v : -v)),
     };
     onChange((d) => ({
       ...d,
@@ -9048,6 +9036,8 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     alert(tipo + " ANEXADO AO MESMO DOSSIÊ DA NF.");
   }
   function liquidarFornecedor(n) {
+    if (isClosedTitle({status:n.pagamentoFornecedorStatus})) return alert("NOTA JÁ LIQUIDADA. NOVO PAGAMENTO BLOQUEADO.");
+    if (!Number.isFinite(Number(n.valorNf)) || Number(n.valorNf) <= 0) return alert("VALOR DA NOTA INVÁLIDO.");
     const ck = checklist(n);
     if (!/FINALIZADA|INCORPORADA AO ESTOQUE/.test(upper(n.status)))
       return alert(
@@ -9060,8 +9050,9 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     const saldo = (data.fornecedorCreditos || [])
       .filter(
         (x) =>
-          x.fornecedorId === n.fornecedorId ||
-          norm(x.fornecedor) === norm(n.emitente),
+          n.fornecedorId && x.fornecedorId
+            ? x.fornecedorId === n.fornecedorId
+            : !!n.emitente && norm(x.fornecedor) === norm(n.emitente),
       )
       .reduce(
         (a, x) =>
@@ -9078,12 +9069,12 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
       );
     const usado = usar ? Math.min(saldo, Number(n.valorNf || 0)) : 0;
     const restante = Math.max(0, Number(n.valorNf || 0) - usado);
-    const pago = Number(
+    const pago = parseMoneyInput(
       prompt(
         `VALOR DA NF: ${money(n.valorNf)}\nCRÉDITO UTILIZADO: ${money(usado)}\nSALDO A PAGAR: ${money(restante)}\n\nINFORME O VALOR DO NOVO PAGAMENTO:`,
       ) ?? "-1",
     );
-    if (pago < 0 || Math.abs(pago + usado - Number(n.valorNf || 0)) > 0.01)
+    if (!Number.isFinite(pago) || pago < 0 || Math.abs(pago + usado - Number(n.valorNf || 0)) > 0.009)
       return alert(
         "LIQUIDAÇÃO NÃO CONCLUÍDA: NOVO PAGAMENTO + CRÉDITO DEVEM CORRESPONDER AO VALOR DA NOTA.",
       );

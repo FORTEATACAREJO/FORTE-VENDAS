@@ -10,7 +10,8 @@ export const BANK_EVENT_STATUS = {
 };
 
 export function normalizeBankEventStatus(value = "") {
-  const key = String(value).trim().toUpperCase().replace(/[^A-Z]/g, "");
+  const key = String(value).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z]/g, "");
+  if (/^(?:NAO|NO|NOT|AGUARDANDO|PENDENTE|SEM)/.test(key)) return "PENDENTE";
   if (key.includes("LIQUID") || key.includes("CREDIT")) return BANK_EVENT_STATUS.LIQUIDADO;
   if (key.includes("PARCIAL")) return BANK_EVENT_STATUS.PARCIAL;
   if (key.includes("PAGO") || key.includes("PAGAMENTO")) return BANK_EVENT_STATUS.PAGO;
