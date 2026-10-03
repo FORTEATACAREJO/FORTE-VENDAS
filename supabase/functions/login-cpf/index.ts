@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-const origins=new Set(["https://forte-vendas.onrender.com", "https://forte-vendas-app.onrender.com", "https://forte-financeiro.onrender.com", "https://forte-venda-externa.onrender.com", "https://forte-carga-direta.onrender.com", "http://localhost:5178"]);
+const origins=new Set(["https://forte-vendas.onrender.com", "https://forte-vendas-app.onrender.com", "https://forte-financeiro.onrender.com", "https://forte-venda-externa.onrender.com", "https://forte-carga-direta.onrender.com", "https://forte-operador-patio.onrender.com", "https://site-forte-atacarejo.onrender.com", "http://localhost:5178"]);
 Deno.serve(async req=>{
  const origin=req.headers.get("origin")||"";
  const headers={"Access-Control-Allow-Origin":origins.has(origin)?origin:"https://forte-vendas.onrender.com","Access-Control-Allow-Headers":"authorization, apikey, content-type, x-client-info","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json","Cache-Control":"no-store",Vary:"Origin"};
