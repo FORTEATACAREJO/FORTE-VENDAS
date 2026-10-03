@@ -99,7 +99,7 @@ Deno.serve(async (request) => {
     if (!passwordIsValid(password)) {
       return respond(origin, 400, {
         error:
-          "A SENHA DEVE TER EXATAMENTE SEIS NÚMEROS.",
+          "A SENHA DEVE TER SOMENTE NÚMEROS E NO MÍNIMO 6 DÍGITOS.",
       });
     }
 
@@ -312,4 +312,3 @@ Deno.serve(async (request) => {
     });
   }
 });
-
