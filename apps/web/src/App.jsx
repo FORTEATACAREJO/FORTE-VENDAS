@@ -24,7 +24,7 @@ import {
 } from "@forte/core";
 import { seed } from "./seed";
 import { loadData, saveData, resetData } from "./storage";
-import { applyAuthUser, loadCloudState, saveCloudState, saveClosedCashSnapshot, supabase, supabaseConfigured } from "./supabase";
+import { applyAuthUser, loadCloudState, saveCloudState, commitCashClosure, getPatioStatus, supabase, supabaseConfigured } from "./supabase";
 import { putFile, getFile, openFile, downloadFile } from "./fileStore";
 import { lerXmlNfe, gerarDanfeSimplificadoPdf } from "./nfe";
 import { connectionMissingFields, normalizeBankEventStatus } from "./banking";
@@ -793,6 +793,8 @@ const custoFornecedor = (d, produtoId, condicaoPagamento, marca = "") => {
 export default function App() {
   const [data, setData] = useState(() => applyAuthUser(loadData(seed)));
   const cloudReady = useRef(false);
+  const [cloudError,setCloudError]=useState("");
+  useEffect(()=>{const listener=e=>setCloudError(e.detail||"");window.addEventListener("forte-cloud-status",listener);return()=>window.removeEventListener("forte-cloud-status",listener)},[]);
   const cloudTimer = useRef(null);
   const [tab, setTab] = useState("home");
   const [globalSearch, setGlobalSearch] = useState("");
@@ -2130,6 +2132,7 @@ export default function App() {
   }
   return (
     <div className="app">
+      {cloudError&&<div role="alert" className="alert warn" style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,padding:16}}>{cloudError}</div>}
       <SefazAutoSync data={data} onChange={setData} currentUser={currentUser} />
       <aside className="sideNav">
         <div className="sideBrand">
@@ -3786,8 +3789,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       "PRÉ-CONFERÊNCIA GERADA. O CAIXA CONTINUA ABERTO E AS CORREÇÕES PERMITIDAS PODEM SER FEITAS ANTES DO FECHAMENTO DEFINITIVO.",
     );
   }
-  function fecharCaixa() {
+  async function fecharCaixa() {
     if (!caixaAberto) return alert("NÃO HÁ CAIXA ABERTO PARA ESTA UNIDADE.");
+    try {
+      await saveCloudState(data);
+      const patio=await getPatioStatus(caixaAberto.id);
+      if(!patio?.liberado)return alert("FECHAMENTO BLOQUEADO: CONTE TODOS OS PRODUTOS NO PÁTIO E RESOLVA AS DIFERENÇAS. MOVIMENTOS POSTERIORES EXIGEM RECONTAGEM.");
+    } catch(error){return alert(error.message||"NÃO FOI POSSÍVEL CONFERIR O PÁTIO E GRAVAR A BASE.");}
     const vv = (data.vendasBalcao || []).filter(
       (v) => v.caixaId === caixaAberto.id && v.status === "CONCLUÍDA" && v.regraPagamento?.entraCaixa !== false,
     );
@@ -3815,7 +3823,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
 
     const fechadoEm = new Date().toISOString();
     const abertura = String(caixaAberto.abertoEm || caixaAberto.data + "T00:00:00");
-    const ativos = (data.produtos || []).filter((p) => p.ativo !== false);
+    const ativos = (data.produtos || []).filter((p) => p.ativo !== false && !/USO.*CONSUMO|IMOBILIZADO/.test(upper(p.finalidade||p.tipoProduto||p.categoria||p.classificacao||"REVENDA").normalize("NFD").replace(/[\u0300-\u036f]/g,"")));
     const vendaProduto = {};
     vv.forEach((v) => (v.itens || []).forEach((it) => {
       const k = it.produtoId || it.id || it.produto;
@@ -3842,13 +3850,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       const outrasSaidas = Math.max(0, periodo.filter(m=>String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.quantidade||0),0)-vendasQtd);
       const ajustes = periodo.filter(m=>!String(m.tipo||"").startsWith("ENTRADA")&&!String(m.tipo||"").startsWith("SAÍDA")).reduce((a,m)=>a+Number(m.ajuste??m.quantidade??0),0);
       const saldoInicial = saldo - entradas + vendasQtd + outrasSaidas - ajustes;
-      const bloqueadoOrcamento = orcamentosAtivos.reduce((a,o)=>a+(o.itens||[]).filter(it=>(it.produtoId||it.id||it.produto)===(p.id)).reduce((z,it)=>z+Number(it.qtd||it.quantidade||0),0),0);
+      const bloqueadoOrcamento = orcamentosAtivos.reduce((a,o)=>a+(o.status==="PARCIALMENTE ATENDIDO"?(o.itensSaldo||[]):(o.itens||[])).filter(it=>it.produtoId===p.id).reduce((z,it)=>z+Number(it.qtd||it.quantidade||0),0),0);
       const entradasDetalhe = periodo.filter(m=>String(m.tipo||"").startsWith("ENTRADA")).map(m=>({
         dataHora:m.dataHora||m.data, nf:m.numeroNotaFiscal||m.nf||m.referencia||"", pedido:m.numeroPedido||m.pedido||"",
         motorista:m.motorista||m.nomeMotorista||"", quantidade:Number(m.quantidade||0)
       }));
       return {produtoId:p.id,produto:p.nome,marca:p.marca,saldoInicial,entradas,vendas:vendasQtd,outrasSaidas,ajustes,
-        saldoFinal:saldo,bloqueadoOrcamento,disponivel:saldo-bloqueadoOrcamento,custoMedio,entradasDetalhe};
+        saldoFinal:Math.round(saldo*1e6)/1e6,bloqueadoOrcamento:Math.round(bloqueadoOrcamento*1e6)/1e6,disponivel:Math.round((saldo-bloqueadoOrcamento)*1e6)/1e6,custoMedio,entradasDetalhe};
     });
     const resultadoFinanceiro = ativos.map((p)=>{
       const vp=vendaProduto[p.id]||{qtd:0,valor:0};
@@ -3877,9 +3885,11 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       },
       creditosClientesSnapshot:(data.clientes||[]).map(cli=>({clienteId:cli.id,cliente:cli.nome,saldo:(data.creditosClientes||[]).filter(cr=>cr.clienteId===cli.id&&cr.status!=="UTILIZADO").reduce((a,cr)=>a+Number(cr.saldo??cr.valor??0),0)})).filter(cr=>cr.saldo>0)
     };
-    onChange((d)=>({...d,caixasBalcao:(d.caixasBalcao||[]).map(x=>x.id===caixaAberto.id?caixaFechado:x)}));
-    saveClosedCashSnapshot(caixaFechado).catch(e=>console.error("FALHA AO GRAVAR HISTÓRICO DO CAIXA NO SUPABASE",e));
-    alert("CAIXA FECHADO, CONGELADO E ENVIADO AO HISTÓRICO FINANCEIRO.");
+    try {
+      const confirmado=await commitCashClosure(data,caixaFechado);
+      onChange((d)=>({...d,caixasBalcao:(d.caixasBalcao||[]).map(x=>x.id===caixaAberto.id?confirmado:x)}));
+      alert("CAIXA FECHADO E GRAVADO COM A CONFERÊNCIA DO PÁTIO NO HISTÓRICO FINANCEIRO.");
+    }catch(error){alert(error.message||"FECHAMENTO NÃO CONFIRMADO. O CAIXA PERMANECE ABERTO.");}
   }
   function numeroOrcamento() {
     const ano = new Date().getFullYear();
@@ -5488,6 +5498,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             ]
           : []),
         ...linhas,
+        ...(!cx.preConferencia ? ["", "ANEXO FINAL — CONFERÊNCIA DO PÁTIO", ...(cx.patioConferencia?.itens||[]).map(it=>`${it.marca} — ${it.produto} | TOTAL ${it.total} | BLOQUEADO ${it.bloqueado} | DISPONÍVEL ${it.disponivel} | CONTADO ${it.contagem} | DIFERENÇA ${it.diferenca} | CONFERENTE ${it.conferente} | ${new Date(it.gravadoEm).toLocaleString("pt-BR")}`)] : []),
       ],
       `${cx.preConferencia ? "PRE-CONFERENCIA" : "CAIXA"}-${cx.data}-ANALITICO.pdf`,
     );
@@ -6712,7 +6723,7 @@ function VendasExternas({ data, onChange, currentUser }) {
 }
 function buildStockLedger(data, unidade, produtoId) {
   const rows = (data.estoqueMov || [])
-    .filter((x) => x.produtoId === produtoId && (!x.unidade || x.unidade === unidade))
+    .filter((x) => x.produtoId === produtoId && (unidade === "ESTOQUE ÚNICO" || !x.unidade || x.unidade === unidade))
     .slice()
     .sort((a, b) =>
       String(a.dataHora || a.data || "").localeCompare(
@@ -6739,7 +6750,7 @@ function buildStockLedger(data, unidade, produtoId) {
       valor -= valorMov;
       saldo -= q;
     } else if (ajuste) {
-      const sinal = Number(x.ajuste || q);
+      const sinal = Number(x.ajuste ?? q);
       if (sinal >= 0) {
         valorMov = sinal * custoEnt;
         valor += valorMov;
@@ -6755,7 +6766,7 @@ function buildStockLedger(data, unidade, produtoId) {
       ...x,
       entrada: entrada ? q : 0,
       saida: saida ? q : 0,
-      ajuste: ajuste ? Number(x.ajuste || q) : 0,
+      ajuste: ajuste ? Number(x.ajuste ?? q) : 0,
       saldo,
       custoEntrada: entrada ? custoEnt : 0,
       custoMedio,
@@ -6785,7 +6796,7 @@ function Estoque({ data, onChange }) {
     ),
   ].sort();
   function summary(p) {
-    const l = buildStockLedger(data, unidade, p.id);
+    const l = buildStockLedger(data, "ESTOQUE ÚNICO", p.id);
     const last = l[l.length - 1];
     return {
       qtd: last?.saldo || 0,
@@ -6830,7 +6841,7 @@ function Estoque({ data, onChange }) {
     .filter((p) => p.ativo !== false)
     .map((p) => ({ p, ...summary(p) }));
   const fullLedger = produtoId
-    ? buildStockLedger(data, unidade, produtoId)
+    ? buildStockLedger(data, "ESTOQUE ÚNICO", produtoId)
     : [];
   const ledger = fullLedger.filter((x) =>
     inPeriod(x, periodStart, periodEnd, (z) =>

@@ -13,7 +13,7 @@ out=["begin;",f"select set_config('request.jwt.claim.sub','{uid}',true);",
    when others then insert into simulation_results values(p_name,sqlerrm ~* 'permiss|inválid|inconsistente|duplicado',sqlerrm);end;
  end;$$;"""]
 def snapshot(data):
- out.extend(["reset role;","update public.fc_app_state set estado="+lit(json.dumps(data,ensure_ascii=False))+"::jsonb where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
+ out.extend(["reset role;","update public.fc_app_state set versao=versao+1, estado="+lit(json.dumps(data,ensure_ascii=False))+"::jsonb where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
 def expected(name,pay,receive,count=None):
  check=f"coalesce(sum(saldo) filter(where tipo='PAGAR'),0)={pay} and coalesce(sum(saldo) filter(where tipo='RECEBER'),0)={receive}"
  if count is not None:check+=f" and count(*)={count}"
@@ -50,9 +50,9 @@ snapshot({'contasReceber':[{'id':'R','valor':10,'vencimento':'2026-02-31'}]})
 out.append("select pg_temp.reject('Bloqueia vencimento impossível');")
 snapshot({})
 out.extend(["reset role;","create temporary table native_fixture as with inserted as (insert into public.fc_contas_pagar(empresa_id,unidade_id,descricao,vencimento,valor,saldo) select p.empresa_id,u.id,'SIMULACAO','2026-10-04',80,30 from public.fc_perfis p join public.fc_unidades u on u.empresa_id=p.empresa_id where p.user_id=auth.uid() limit 1 returning id) select id from inserted;",
- "update public.fc_app_state set estado=jsonb_build_object('contasPagar',jsonb_build_array(jsonb_build_object('id',(select id::text from native_fixture),'valor',80))) where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
+ "update public.fc_app_state set versao=versao+1, estado=jsonb_build_object('contasPagar',jsonb_build_array(jsonb_build_object('id',(select id::text from native_fixture),'valor',80))) where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
 expected('Título normalizado prevalece sem duplicação',30,0,1)
-out.extend(["reset role;","update public.fc_app_state set estado=jsonb_build_object('contasPagar',jsonb_build_array(jsonb_build_object('id','LEGADO','normalized_id',(select id::text from native_fixture),'valor',80))) where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
+out.extend(["reset role;","update public.fc_app_state set versao=versao+1, estado=jsonb_build_object('contasPagar',jsonb_build_array(jsonb_build_object('id','LEGADO','normalized_id',(select id::text from native_fixture),'valor',80))) where empresa_id=public.fc_current_empresa_id();","set local role authenticated;"])
 expected('Vínculo explícito do legado sem duplicação',30,0,1)
 for field,value,name in [('ativo','false','Usuário inativo'),('status_aprovacao',"'PENDENTE'",'Usuário pendente'),('perfil',"'VENDAS'",'Usuário sem permissão financeira')]:
  out.extend(["reset role;",f"update public.fc_perfis set {field}={value} where user_id=auth.uid();","set local role authenticated;",f"select pg_temp.reject('{name}');","reset role;",f"update public.fc_perfis set {field}="+({'ativo':'true','status_aprovacao':"'APROVADO'",'perfil':"'MASTER'"}[field])+" where user_id=auth.uid();"])
