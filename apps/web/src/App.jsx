@@ -13369,7 +13369,7 @@ function TodasCargas({ data }) {
           <div className="cadRow" key={c.id}>
             <div>
               <b>{c.codigo || c.numeroPedido || "CARGA SEM CÓDIGO"} • {c.marca || c.produto || "PRODUTO NÃO INFORMADO"}</b>
-              <small>{categoria(c)} • {c.motorista || "MOTORISTA PENDENTE"} • {Number(c.qtd || 0)} SC • {c.fase || c.status || "PENDENTE"}</small>
+              <small>{categoria(c)} • {c.motorista || "AGUARDANDO MOTORISTA"} • {Number(c.qtd || 0)} SC • {c.numeroPedidoFornecedor ? `PEDIDO ${c.numeroPedidoFornecedor}` : "AGUARDANDO PEDIDO DO FORNECEDOR"} • {c.fase || c.status || "PENDENTE"}</small>
             </div>
             <span>{c.status === "AZUL" || c.fase === "FINALIZADA" ? "FINALIZADA" : "PENDENTE"}</span>
           </div>
