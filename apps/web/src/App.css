@@ -202,3 +202,9 @@ body{font-size:15px!important}.sideNav>button{font-size:11px!important}.dashboar
 .authCard button:disabled{opacity:.65;cursor:wait}
 .authCard input:focus-visible,.authCard select:focus-visible,.authCard button:focus-visible{outline:3px solid #8bbcff;outline-offset:2px}
 @media(max-width:600px){.authPage{padding:16px 12px}.authCard{padding:24px 20px;border-radius:16px}}
+
+/* Controles do sistema no cabeçalho, sem sobrepor a navegação. */
+.dashboardHeader .headerActions{min-width:0!important;flex-wrap:wrap!important;white-space:normal!important}
+.dashboardHeader [data-forte-top-actions]{flex:1 1 100%;order:3;gap:8px}
+.dashboardHeader [data-forte-top-actions] button{white-space:normal!important;min-height:40px!important;max-width:100%!important}
+@media(max-width:620px){.dashboardHeader .headerActions{width:100%;gap:10px!important}.dashboardHeader [data-forte-top-actions]{width:100%}.dashboardHeader [data-forte-top-actions] .forte-access-admin{flex:1 1 100%}.dashboardHeader [data-forte-top-actions] .fa-admin-button{width:100%}}

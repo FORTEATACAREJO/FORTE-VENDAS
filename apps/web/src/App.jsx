@@ -2247,6 +2247,7 @@ export default function App() {
             )}
           </div>
           <div className="headerActions">
+            <div data-forte-top-actions aria-label="Ações do sistema" />
             <button
               className="ghost"
               onClick={() => setModal({ type: "ajudaIa", tab })}
