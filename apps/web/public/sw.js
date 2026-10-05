@@ -1,3 +1,4 @@
+importScripts('/forte-notification-worker.js?v=20261005-1');
 const CACHE="forte-vendas-auth-20261005-2";
 const CORE=["/","/manifest.webmanifest","/forte-vendas-icon.jpg"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));

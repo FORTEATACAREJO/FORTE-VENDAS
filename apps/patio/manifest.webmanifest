@@ -1,1 +1,18 @@
-{"name":"Forte Operador de Pátio","short_name":"Forte Pátio","start_url":"/","display":"standalone","background_color":"#f4f6f8","theme_color":"#6b4f2a","icons":[{"src":"/patio-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "Forte Operador de Pátio",
+  "short_name": "Forte Pátio",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#6b4f2a",
+  "icons": [
+    {
+      "src": "https://site-forte-atacarejo.onrender.com/central/icons/patio-aprovado-320.png",
+      "sizes": "320x320",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "scope": "/",
+  "id": "/"
+}
