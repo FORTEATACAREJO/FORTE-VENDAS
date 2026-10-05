@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import {createCloudStateStore} from './cloud-state.js';
 const url=String(import.meta.env.VITE_SUPABASE_URL||"").trim(),key=String(import.meta.env.VITE_SUPABASE_ANON_KEY||"").trim();
 export const supabaseConfigured=Boolean(url&&key);
-export const supabase=supabaseConfigured?createClient(url,key,{auth:{persistSession:true,storage:window.sessionStorage,autoRefreshToken:true,detectSessionInUrl:true}}):null;
+export const supabase=supabaseConfigured?createClient(url,key,{auth:{persistSession:true,storage:window.localStorage,autoRefreshToken:true,detectSessionInUrl:true}}):null;
 let authContext=null; export const setAuthContext=(v)=>{authContext=v}; export const getAuthContext=()=>authContext;
 export function applyAuthUser(data){if(!authContext?.user||!authContext?.profile)return data;const p=authContext.profile,id=`auth-${authContext.user.id}`,perfil=String(p.perfil||"CONSULTA").toUpperCase();const u={id,authUserId:authContext.user.id,empresaId:p.empresa_id,unidadeId:p.unidade_id,nome:p.nome||authContext.user.email,login:authContext.user.email,email:authContext.user.email,perfil,ativo:p.ativo!==false,admin:["MASTER","ADMINISTRADOR"].includes(perfil),master:perfil==="MASTER",permissoes:p.permissoes||{}};return{...data,currentUserId:id,usuarios:[u,...(data.usuarios||[]).filter(x=>x.id!==id)]}}
 const cloudStore=supabase?createCloudStateStore(supabase,getAuthContext,(error,state)=>{
