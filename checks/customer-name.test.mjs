@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {customerName} from '../apps/web/src/customer-name.js';
+const customers=[{id:'c1',nome:'Razão Social Ltda',nomeFantasia:'  Loja do Cliente  '},{id:'c2',nome:'Sem Fantasia',nomeFantasia:' '},{id:'c3',nome:'Duplicado',nomeFantasia:'Loja A'},{id:'c4',nome:'Duplicado',nomeFantasia:'Loja B'}];
+const original=JSON.stringify(customers);
+assert.equal(customerName(customers[0]),'Loja do Cliente');
+assert.equal(customerName({clienteId:'c1',cliente:'Nome histórico'},customers),'Loja do Cliente');
+assert.equal(customerName('Razão Social Ltda',customers),'Loja do Cliente');
+assert.equal(customerName({clienteId:'c2',cliente:'Sem Fantasia'},customers),'Sem Fantasia');
+assert.equal(customerName('Duplicado',customers),'Duplicado');
+assert.equal(customerName({nomeFantasia:' ',nome_fantasia:'Fantasia legada',nome:'Legal'}),'Fantasia legada');
+assert.equal(customerName({trade_name:'Loja Fiscal',legal_name:'Legal Fiscal'}),'Loja Fiscal');
+assert.equal(customerName({cliente:'Cliente avulso'},customers),'Cliente avulso');
+assert.equal(customerName(null,customers),'');
+assert.equal(JSON.stringify(customers),original,'display must not mutate legal names or IDs');
+console.log('Customer display: 10 checks passed');

@@ -1,3 +1,4 @@
+import {customerName} from "./customer-name.js";
 import { useMemo, useState } from "react";
 
 const uid = (p) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -18,14 +19,14 @@ export function UnifiedSalesPanel({ data, onChange, currentUser, canRoute = fals
       const key = x.grupoPedidoId || x.numeroVenda || x.id;
       if (!acc[key]) acc[key] = { id: key, source: "vendas", ids: [], numero: x.numeroVenda || key, clientes: [], origem: x.origemComercial || "VR", vendedor: x.vendedorNome || "NÃO INFORMADO", criadoEm: x.criadoEm, destinoPainel: x.destinoPainel || "AGUARDANDO ROTEAMENTO", total: 0 };
       acc[key].ids.push(x.id);
-      acc[key].clientes.push({ id: x.id, nome: x.cliente || "CLIENTE NÃO INFORMADO", produto: x.produto || x.produtoNome || "ITEM", qtd: Number(x.qtd || 0), valor: Number(x.qtd || 0) * Number(x.precoUnitario || 0) });
+      acc[key].clientes.push({ id: x.id, nome: customerName(x, data.clientes) || "CLIENTE NÃO INFORMADO", produto: x.produto || x.produtoNome || "ITEM", qtd: Number(x.qtd || 0), valor: Number(x.qtd || 0) * Number(x.precoUnitario || 0) });
       acc[key].total += Number(x.qtd || 0) * Number(x.precoUnitario || 0);
       return acc;
     }, {}));
-    const ext = (data.vendasExternas || []).map(x => ({ id: x.id, source: "externas", ids: [x.id], numero: x.numeroVenda || x.id, clientes: [{ id: x.id, nome: x.cliente || x.clienteNome || "CLIENTE NÃO INFORMADO", produto: x.produto || "VENDA EXTERNA", qtd: Number(x.qtd || 0), valor: Number(x.total || x.valor || 0) }], origem: "VX", vendedor: x.vendedor || x.vendedorNome || "VENDEDOR EXTERNO", criadoEm: x.criadoEm || x.data, destinoPainel: x.destinoPainel || "AGUARDANDO ROTEAMENTO", total: Number(x.total || x.valor || 0) }));
-    const balcao = (data.vendasBalcao || []).filter(x => x.status !== "ORÇAMENTO").map(x => ({ id: x.id, source: "balcao", ids: [x.id], numero: x.numeroVenda || x.id, clientes: [{ id: x.id, nome: x.cliente || "CLIENTE NÃO INFORMADO", produto: "VENDA BALCÃO", qtd: 0, valor: Number(x.total || 0) }], origem: x.origemComercial || "VR", vendedor: x.vendedorNome || x.usuario || "BALCÃO", criadoEm: x.criadoEm || x.data, destinoPainel: "VENDA BALCÃO", total: Number(x.total || 0) }));
+    const ext = (data.vendasExternas || []).map(x => ({ id: x.id, source: "externas", ids: [x.id], numero: x.numeroVenda || x.id, clientes: [{ id: x.id, nome: customerName(x, data.clientes) || x.clienteNome || "CLIENTE NÃO INFORMADO", produto: x.produto || "VENDA EXTERNA", qtd: Number(x.qtd || 0), valor: Number(x.total || x.valor || 0) }], origem: "VX", vendedor: x.vendedor || x.vendedorNome || "VENDEDOR EXTERNO", criadoEm: x.criadoEm || x.data, destinoPainel: x.destinoPainel || "AGUARDANDO ROTEAMENTO", total: Number(x.total || x.valor || 0) }));
+    const balcao = (data.vendasBalcao || []).filter(x => x.status !== "ORÇAMENTO").map(x => ({ id: x.id, source: "balcao", ids: [x.id], numero: x.numeroVenda || x.id, clientes: [{ id: x.id, nome: customerName(x, data.clientes) || "CLIENTE NÃO INFORMADO", produto: "VENDA BALCÃO", qtd: 0, valor: Number(x.total || 0) }], origem: x.origemComercial || "VR", vendedor: x.vendedorNome || x.usuario || "BALCÃO", criadoEm: x.criadoEm || x.data, destinoPainel: "VENDA BALCÃO", total: Number(x.total || 0) }));
     return [...direct, ...ext, ...balcao].sort((a, b) => String(b.criadoEm || "").localeCompare(String(a.criadoEm || "")));
-  }, [data.vendas, data.vendasExternas, data.vendasBalcao]);
+  }, [data.vendas, data.vendasExternas, data.vendasBalcao, data.clientes]);
   const shown = rows.filter(x => filter === "TODAS" || x.destinoPainel === filter || x.origem === filter);
   function route(row, destination) {
     if (!canRoute) return alert("SEU PERFIL NÃO POSSUI PERMISSÃO PARA ROTEAR VENDAS.");

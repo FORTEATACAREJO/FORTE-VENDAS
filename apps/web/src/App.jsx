@@ -1,3 +1,4 @@
+import {customerName} from "./customer-name.js";
 import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PalletsV47 from "./PalletsV47.jsx";
@@ -883,13 +884,13 @@ export default function App() {
     };
     (data.clientes || []).forEach((x) => {
       if (
-        [x.nome, x.documento, x.cidade, x.uf, x.email, x.telefone].some((v) =>
+        [customerName(x), x.nome, x.documento, x.cidade, x.uf, x.email, x.telefone].some((v) =>
           norm(v).includes(q),
         )
       )
         push(
           "CLIENTE",
-          x.nome,
+          customerName(x),
           `${x.documento || ""} • ${x.cidade || ""}/${x.uf || ""}`,
           () => {
             setCadType("clientes");
@@ -2412,7 +2413,7 @@ export default function App() {
                 .filter(
                   (v) =>
                     !norm(walletSearch) ||
-                    [v.cliente, v.marca, v.produto, v.destino].some((x) =>
+                    [customerName(v, data.clientes), v.cliente, v.marca, v.produto, v.destino].some((x) =>
                       norm(x).includes(norm(walletSearch)),
                     ),
                 )
@@ -2435,7 +2436,7 @@ export default function App() {
                     <b>
                       {v.tipoDestino === "ESTOQUE_FORTE"
                         ? "🏭 ESTOQUE FORTE"
-                        : v.cliente}
+                        : customerName(v, data.clientes || [])}
                     </b>
                     <small>
                       {v.numeroVenda || "SEM Nº VENDA"} • {opDate(v) || "-"} •{" "}
@@ -2500,7 +2501,7 @@ export default function App() {
                     );
                     return (
                       <div key={v.id}>
-                        <b>{v.cliente}</b>
+                        <b>{customerName(v, data.clientes || [])}</b>
                         <span>{v.produto}</span>
                         <span>{v.qtd} SC</span>
                         <span>{(v.pesoKg / 1000).toFixed(1)} T</span>
@@ -3238,7 +3239,7 @@ export default function App() {
           <section className="card">
             <div className="sectionHead"><div><h2>CONTAS A RECEBER</h2><p>CLIENTES, PARCELAS, VENCIMENTOS, RECEBIMENTOS E LIQUIDAÇÕES.</p></div></div>
             <div className="titleList">
-              {data.contasReceber.map((t) => <div className="titleRow" key={t.id}><b>{t.cliente || t.origem || "CLIENTE"}</b><span>{t.numeroVenda || t.carga || "-"}</span><span>{t.titulo || t.nf || "-"}</span><span>{money(t.valor)}</span><span>{formatDateBR(t.emissao)}</span><span>{formatDateBR(t.vencimento)}</span><span>{t.status || "ABERTO"}</span></div>)}
+              {data.contasReceber.map((t) => <div className="titleRow" key={t.id}><b>{customerName(t, data.clientes || []) || t.origem || "CLIENTE"}</b><span>{t.numeroVenda || t.carga || "-"}</span><span>{t.titulo || t.nf || "-"}</span><span>{money(t.valor)}</span><span>{formatDateBR(t.emissao)}</span><span>{formatDateBR(t.vencimento)}</span><span>{t.status || "ABERTO"}</span></div>)}
               {!data.contasReceber.length && <p className="muted">NENHUMA CONTA A RECEBER CADASTRADA.</p>}
             </div>
             <h3>RELATÓRIO POR PERÍODO</h3>
@@ -4034,7 +4035,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           get: (v) => formatDateBR(v.dataOperacao || v.data),
         },
         { label: "ORÇAMENTO", w: 1, get: (v) => v.numeroOrcamento || v.id },
-        { label: "CLIENTE", w: 1.4, get: (v) => v.cliente || "-" },
+        { label: "CLIENTE", w: 1.4, get: (v) => customerName(v, data.clientes) || "-" },
         {
           label: "PRODUTOS",
           w: 2.4,
@@ -4997,7 +4998,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         `Nº ORÇAMENTO: ${v.numeroOrcamento || "-"}`,
         `UNIDADE: ${v.unidade}`,
         `DATA: ${formatDateBR(v.data)}`,
-        `CLIENTE: ${v.cliente}`,
+        `CLIENTE: ${customerName(v, data.clientes)}`,
         `ENDEREÇO DA ENTREGA: ${enderecoCompletoEntrega(v)}`,
         ...iv,
         `ENTREGA: ${v.entrega}`,
@@ -5026,7 +5027,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       [
         `DATA: ${formatDateBR(v.data)}`,
         `VENDA: ${v.numeroVenda || v.id}`,
-        `CLIENTE: ${v.cliente}`,
+        `CLIENTE: ${customerName(v, data.clientes)}`,
         `DESTINO: ${v.destinoEntrega || "-"}`,
         `ENDEREÇO COMPLETO DA ENTREGA: ${enderecoCompletoEntrega(v)}`,
         `MOTORISTA: ${v.motorista || "-"}`,
@@ -5054,7 +5055,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       [
         `DATA DA VENDA: ${formatDateBR(v.data)}`,
         `VENDA: ${v.numeroVenda || v.id}`,
-        `CLIENTE: ${v.cliente || "-"}`,
+        `CLIENTE: ${customerName(v, data.clientes) || "-"}`,
         `DESTINO / OBRA: ${v.destinoEntrega || "-"}`,
         `ENDEREÇO COMPLETO DA ENTREGA: ${enderecoCompletoEntrega(v)}`,
         `MOTORISTA: ${v.motorista || "-"}`,
@@ -5144,7 +5145,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       "RECIBO / ORDEM DE PAGAMENTO DE FRETE — VENDA BALCÃO",
       [
         `DATA: ${formatDateBR(todayISO())}`,
-        `CLIENTE: ${c.nome}`,
+        `CLIENTE: ${customerName(c)}`,
         `DESTINO / OBRA: ${upper(destinoEntrega || c.cidade || "-")}`,
         `ENDEREÇO COMPLETO DA ENTREGA: ${enderecoCompletoEntrega()}`,
         `MOTORISTA: ${m.nome || "-"}`,
@@ -5342,7 +5343,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   function abrirRelatorioCompletoCliente() {
     const q = upper(filtroOrcCliente || "").trim();
     if (!q) return alert("DIGITE O NOME DO CLIENTE NO FILTRO CLIENTE.");
-    const candidatos = clientes.filter((x) => upper(x.nome || "").includes(q));
+    const candidatos = clientes.filter((x) => upper(`${customerName(x)} ${x.nome || ""}`).includes(q));
     if (candidatos.length === 0) return alert("CLIENTE NÃO ENCONTRADO.");
     if (candidatos.length > 1) {
       const lista = candidatos
@@ -5363,7 +5364,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     );
     if (!rows.length) return alert("MARQUE AO MENOS UMA OPERAÇÃO.");
     pdfTabela(
-      `RELATÓRIO COMPLETO DO CLIENTE — ${clienteRelatorio.nome}`,
+      `RELATÓRIO COMPLETO DO CLIENTE — ${customerName(clienteRelatorio)}`,
       [
         {
           label: "DATA",
@@ -5425,7 +5426,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         "CRÉDITOS DISPONÍVEIS DOS CLIENTES NO FECHAMENTO:",
         ...((cx.creditosClientesSnapshot || []).length
           ? (cx.creditosClientesSnapshot || []).map(
-              (cr) => `${cr.cliente}: ${money(cr.saldo)}`,
+              (cr) => `${customerName(cr, data.clientes)}: ${money(cr.saldo)}`,
             )
           : ["NENHUM CLIENTE COM CRÉDITO DISPONÍVEL."]),
       ],
@@ -5443,7 +5444,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       "",
       ...lista.flatMap((v, i) => [
         `VENDA ${i + 1} — ${v.numeroVenda || v.id} — ${v.dataHora ? new Date(v.dataHora).toLocaleString("pt-BR") : formatDateBR(v.data)}`,
-        `CLIENTE: ${v.cliente || "-"} | DESTINO/OBRA: ${v.destinoEntrega || "-"}`,
+        `CLIENTE: ${customerName(v, data.clientes) || "-"} | DESTINO/OBRA: ${v.destinoEntrega || "-"}`,
         `ITENS: ${(v.itens || []).map((it) => `${it.marca ? it.marca + " — " : ""}${it.produto} ${it.qtd} SC`).join(" / ") || "-"}`,
         `PAGAMENTO: ${(v.pagamentos||[]).length ? v.pagamentos.map(fp => `${fp.forma} ${money(fp.valor)}`).join(" + ") : (v.pagamento || "-")} | PRODUTOS: ${money(v.subtotal || 0)} | FRETE: ${money(v.frete || 0)} | TOTAL: ${money(v.total || 0)}`,
         `MOTORISTA/ENTREGA: ${v.motorista || "-"} | COMPROVANTES: ${(data.comprovantesClientes || []).filter((cp) => cp.vendaId === v.id || cp.operacaoId === v.id).length}`,
@@ -5453,7 +5454,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       "CRÉDITOS DISPONÍVEIS AO FINAL DO CAIXA:",
       ...((cx.creditosClientesSnapshot || []).length
         ? (cx.creditosClientesSnapshot || []).map(
-            (cr) => `${cr.cliente}: ${money(cr.saldo)}`,
+            (cr) => `${customerName(cr, data.clientes)}: ${money(cr.saldo)}`,
           )
         : ["NENHUM."]),
     ];
@@ -5499,7 +5500,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
               "RELATÓRIO DE VENDA BALCÃO",
               vendas.map(
                 (v) =>
-                  `${v.data} | ${v.unidade} | ${v.cliente} | ${(v.itens || []).map((i) => `${i.produto} ${i.qtd}SC`).join("; ")} | FRETE ${money(v.frete)} | ${v.responsavelFrete || "-"} | TOTAL ${money(v.total)} | ${v.status}`,
+                  `${v.data} | ${v.unidade} | ${customerName(v, data.clientes)} | ${(v.itens || []).map((i) => `${i.produto} ${i.qtd}SC`).join("; ")} | FRETE ${money(v.frete)} | ${v.responsavelFrete || "-"} | TOTAL ${money(v.total)} | ${v.status}`,
               ),
               "RELATORIO-VENDA-BALCAO.pdf",
             )
@@ -5581,7 +5582,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
               )
               .map((c) => (
                 <option value={c.id} key={c.id}>
-                  {c.nome}
+                  {customerName(c, data.clientes || [])}
                 </option>
               ))}
           </select>
@@ -6090,7 +6091,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           <div className="transportBox">
             <div className="sectionHead">
               <div>
-                <h3>HISTÓRICO COMPLETO — {clienteRelatorio.nome}</h3>
+                <h3>HISTÓRICO COMPLETO — {customerName(clienteRelatorio, data.clientes || [])}</h3>
                 <p>ORÇAMENTOS E VENDAS BALCÃO NO MESMO PRONTUÁRIO COMERCIAL.</p>
               </div>
               <button
@@ -6219,7 +6220,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                   <div>
                     <b>{v.numeroOrcamento || v.id}</b>
                     <small>
-                      {formatDateBR(v.dataOperacao || v.data)} • {v.cliente}
+                      {formatDateBR(v.dataOperacao || v.data)} • {customerName(v, data.clientes || [])}
                     </small>
                   </div>
                   <div>
@@ -6358,7 +6359,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           <div className="financialRow" key={v.id}>
             <b>{formatDateBR(v.data)}</b>
             <span>{v.numeroVenda || v.id}</span>
-            <span>{v.cliente}</span>
+            <span>{customerName(v, data.clientes || [])}</span>
             <span>
               {(v.itens || [])
                 .map((i) => `${i.produto} • ${i.qtd}`)
@@ -6517,7 +6518,7 @@ function VendasExternas({ data, onChange, currentUser }) {
                 .filter((v) => v.status === "CONCLUÍDA")
                 .map(
                   (v) =>
-                    `${opDate(v) || "-"} | ${v.vendedor} | ${v.cliente} | ${(v.itens || []).map((i) => `${i.produto} ${i.qtd}SC`).join("; ")} | TOTAL ${money(v.total)} | COMISSÃO ${money(v.comissao)} | ${v.atendimento}`,
+                    `${opDate(v) || "-"} | ${v.vendedor} | ${customerName(v, data.clientes)} | ${(v.itens || []).map((i) => `${i.produto} ${i.qtd}SC`).join("; ")} | TOTAL ${money(v.total)} | COMISSÃO ${money(v.comissao)} | ${v.atendimento}`,
                 ),
               "RELATORIO-VENDAS-EXTERNAS.pdf",
             )
@@ -6537,7 +6538,7 @@ function VendasExternas({ data, onChange, currentUser }) {
               .filter((c) => c.ativo !== false)
               .map((c) => (
                 <option value={c.id} key={c.id}>
-                  {c.nome}
+                  {customerName(c, data.clientes || [])}
                 </option>
               ))}
           </select>
@@ -6624,7 +6625,7 @@ function VendasExternas({ data, onChange, currentUser }) {
           .map((v) => (
             <div className="cadRow" key={v.id}>
               <div>
-                <b>{v.cliente}</b>
+                <b>{customerName(v, data.clientes || [])}</b>
                 <small>
                   {opDate(v) || "-"} • {v.vendedor} •{" "}
                   {(v.itens || [])
@@ -8168,12 +8169,12 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose }) {
   function relatorio(tipo) {
     const hoje=todayISO();
     const lista=boletos.filter((b) => tipo === "VENCIDOS" ? b.vencimento < hoje && !upper(b.status).includes("LIQUID") : b.vencimento >= hoje && !upper(b.status).includes("LIQUID"));
-    pdfSimple(`RELATÓRIO CONDENSADO — BOLETOS ${tipo}`, [...lista.map((b) => `${b.cliente} | VENDA ${b.numeroVenda} | PARC. ${b.parcela || 1}/${b.totalParcelas || 1} | VENC. ${formatDateBR(b.vencimento)} | ${money(b.valor)} | ${b.status}`),"",`TOTAL: ${money(lista.reduce((s,b)=>s+Number(b.valor||0),0))} • ${lista.length} TÍTULO(S)`], `BOLETOS-${tipo}-${todayISO()}.pdf`);
+    pdfSimple(`RELATÓRIO CONDENSADO — BOLETOS ${tipo}`, [...lista.map((b) => `${customerName(b, data.clientes)} | VENDA ${b.numeroVenda} | PARC. ${b.parcela || 1}/${b.totalParcelas || 1} | VENC. ${formatDateBR(b.vencimento)} | ${money(b.valor)} | ${b.status}`),"",`TOTAL: ${money(lista.reduce((s,b)=>s+Number(b.valor||0),0))} • ${lista.length} TÍTULO(S)`], `BOLETOS-${tipo}-${todayISO()}.pdf`);
   }
   return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={onClose} wide>
     <div className="transportBox"><p className="note">ESTA TELA PERMITE EMITIR, ENVIAR E ALTERAR BOLETOS DA PRÓPRIA VENDA. A ALTERAÇÃO É LIBERADA NO DIA SEGUINTE À EMISSÃO, CONFORME O FLUXO ATUAL DO ITAÚ. NÃO EXIBE A FRANCESINHA DETALHADA.</p><div className="actions"><button className="ghost dark" onClick={() => relatorio("A VENCER")}>RELATÓRIO A VENCER</button><button className="ghost dark" onClick={() => relatorio("VENCIDOS")}>RELATÓRIO VENCIDOS</button></div></div>
     <h3>NOVA EMISSÃO</h3><div className="miniGrid">
-      <Field label="VENDA"><select value={vendaId} onChange={(e) => setVendaId(e.target.value)}><option value="">SELECIONE...</option>{vendas.slice().reverse().map((v) => <option key={v.id} value={v.id}>{v.numeroVenda} • {v.cliente || v.nomeCliente || "CLIENTE"} • {money(v.total || v.valorTotal || v.valor)}</option>)}</select></Field>
+      <Field label="VENDA"><select value={vendaId} onChange={(e) => setVendaId(e.target.value)}><option value="">SELECIONE...</option>{vendas.slice().reverse().map((v) => <option key={v.id} value={v.id}>{v.numeroVenda} • {customerName(v, data.clientes || []) || "CLIENTE"} • {money(v.total || v.valorTotal || v.valor)}</option>)}</select></Field>
       <Field label="PARCELAS"><input type="number" min="1" max="36" value={parcelas} onChange={(e) => setParcelas(e.target.value)} /></Field>
       <Field label="PRIMEIRO VENCIMENTO"><input type="date" value={primeiroVencimento} onChange={(e) => setPrimeiroVencimento(e.target.value)} /></Field>
       <Field label="INTERVALO EM DIAS"><input type="number" min="1" value={intervalo} onChange={(e) => setIntervalo(e.target.value)} /></Field>
@@ -8412,7 +8413,7 @@ function RecebiveisItau({ data, onChange }) {
               .reverse()
               .map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.numeroVenda} • {v.cliente} • {v._canal}
+                  {v.numeroVenda} • {customerName(v, data.clientes || [])} • {v._canal}
                 </option>
               ))}
           </select>
@@ -8476,7 +8477,7 @@ function RecebiveisItau({ data, onChange }) {
           .map((b) => (
             <div className="rowContents" key={b.id}>
               <span>{b.numeroVenda}</span>
-              <span>{b.cliente}</span>
+              <span>{customerName(b, data.clientes || [])}</span>
               <span>{b.canal}</span>
               <span>{b.banco}</span>
               <span>{b.arquivo}</span>
@@ -10405,7 +10406,7 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
       <div className="transportBox">
         <h3>DISTRIBUIÇÃO ENTRE CLIENTES</h3>
         <label>SELECIONAR VENDA PENDENTE
-          <select value={vendaPendenteId} onChange={e=>setVendaPendenteId(e.target.value)}><option value="">SELECIONE...</option>{pendentes.filter(v=>!linhas.some(x=>x.origemVendaId===v.id)).map(v=><option key={v.id} value={v.id}>{v.numeroVenda||v.id} • {v.cliente} • {v.produto} • {v.qtd} SC</option>)}</select>
+          <select value={vendaPendenteId} onChange={e=>setVendaPendenteId(e.target.value)}><option value="">SELECIONE...</option>{pendentes.filter(v=>!linhas.some(x=>x.origemVendaId===v.id)).map(v=><option key={v.id} value={v.id}>{v.numeroVenda||v.id} • {customerName(v, data.clientes || [])} • {v.produto} • {v.qtd} SC</option>)}</select>
         </label><button type="button" className="secondary" onClick={()=>{const v=pendentes.find(x=>x.id===vendaPendenteId);if(!v)return;const p=(data.produtos||[]).find(x=>x.id===v.produtoId);const cliente=clientes.find(x=>x.id===v.clienteId);if(!p||!cliente)return alert("VENDA PENDENTE SEM PRODUTO OU CLIENTE VÁLIDO.");const ja=linhas.filter(x=>x.produtoId===p.id).reduce((a,x)=>a+Number(x.qtd||0),0);const gravado=vendasExistentes.filter(x=>x.produtoId===p.id&&x.origem==="DISTRIBUIÇÃO DA NF DA CARGA").reduce((a,x)=>a+Number(x.qtd||0),0);if(ja+Number(v.qtd||0)+gravado>qtdBaseProduto(p.id))return alert("A QUANTIDADE DESTA VENDA EXCEDE O SALDO DO PRODUTO NA NF.");setLinhas(a=>[...a,{...v,origemVendaId:v.id,cliente:cliente.nome,produto:p.nome,marca:p.marca,preco:Number(v.precoUnitario||v.preco||0),qtd:Number(v.qtd),destino:v.destino||cliente.cidade||"",condicaoPagamento:v.condicaoPagamento||cliente.condicaoPagamento||"A VISTA"}]);setVendaPendenteId("")}}>ADICIONAR VENDA PENDENTE</button>
         {itensNota.length>0&&<p className="note">ITENS DA NF: {itensNota.map(i=>i.nome+" "+i.qtd+" SC").join(" • ")}</p>}
         <div className="miniGrid">
@@ -10426,7 +10427,7 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
               <option value="">SELECIONE...</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nome}
+                  {customerName(c, data.clientes || [])}
                 </option>
               ))}
             </select>
@@ -10508,7 +10509,7 @@ function DistribuirCargaModal({ carga, data, onClose, onChange, currentUser }) {
             <div className="cadRow" key={x.id}>
               <div>
                 <b>
-                  {x.cliente} • {x.qtd} SC • {money(x.preco)}
+                  {customerName(x, data.clientes || [])} • {x.qtd} SC • {money(x.preco)}
                 </b>
                 <small>
                   {x.marca} • {x.produto} • {x.destino} • PALLETS:{" "}
@@ -10603,7 +10604,7 @@ function LoadModal({ carga, data, onClose, onGo, onDistribute }) {
       <div className="loadClients">
         {vs.map((v) => (
           <div key={v.id}>
-            <b>{v.cliente}</b>
+            <b>{customerName(v, data.clientes || [])}</b>
             <span>{v.produto}</span>
             <span>{v.qtd} SC</span>
             <span>{(v.pesoKg / 1000).toFixed(1)} T</span>
@@ -11988,7 +11989,7 @@ function CadModal({
             key={x.id}
           >
             <div>
-              <b>{x.nome || x.descricao || x.email}</b>
+              <b>{(type === "clientes" ? customerName(x) : x.nome) || x.descricao || x.email}</b>
               <small>
                 {Object.entries(x)
                   .filter(
@@ -12054,7 +12055,7 @@ function Daily({ data }) {
       {rows.length ? (
         rows.map((x, i) => (
           <span key={i}>
-            {upper(x.fornecedor || x.cliente || "")} • {x.carga || "-"} •{" "}
+            {upper(x.fornecedor || customerName(x, data.clientes || []) || "")} • {x.carga || "-"} •{" "}
             {money(x.valor)} • {x.status || "ABERTO"}
           </span>
         ))
@@ -12281,7 +12282,7 @@ function NewSale({ data, onClose, onSave, onDataChange }) {
               .filter((x) => x.ativo !== false)
               .map((x) => (
                 <option value={x.id} key={x.id}>
-                  {x.nome}
+                  {customerName(x, data.clientes || [])}
                 </option>
               ))}
           </select>
@@ -13584,7 +13585,7 @@ function PlanejamentoCargas({ data, onChange, currentUser }) {
             <div className="cadRow" key={v.id}>
               <div>
                 <b>
-                  {v.numeroVenda || "SEM Nº"} • {v.cliente}
+                  {v.numeroVenda || "SEM Nº"} • {customerName(v, data.clientes || [])}
                 </b>
                 <small>
                   {opDate(v) || "-"} • {v.produto} • {v.qtd} SC • {v.destino}
@@ -13794,7 +13795,7 @@ function Relatorios({ data }) {
             { label: "DATA", w: 0.7, get: (x) => opDate(x) || "-" },
             { label: "Nº VENDA", w: 1, get: (x) => x.numeroVenda || "-" },
             { label: "UNIDADE", w: 1.2, get: (x) => x.unidade || "-" },
-            { label: "CLIENTE", w: 1.5, get: (x) => x.cliente || "-" },
+            { label: "CLIENTE", w: 1.5, get: (x) => customerName(x, data.clientes) || "-" },
             { label: "PAGAMENTO", w: 1, get: (x) => x.pagamento || "-" },
             { label: "TOTAL", w: 0.9, get: (x) => money(x.total || 0) },
             { label: "STATUS", w: 0.8, get: (x) => x.status || "-" },
@@ -13854,7 +13855,7 @@ function Relatorios({ data }) {
           [
             { label: "DATA", w: 0.8, get: (x) => opDate(x) || "-" },
             { label: "VENDEDOR", w: 1.3, get: (x) => x.vendedor || "-" },
-            { label: "CLIENTE", w: 1.5, get: (x) => x.cliente || "-" },
+            { label: "CLIENTE", w: 1.5, get: (x) => customerName(x, data.clientes) || "-" },
             { label: "DESTINO", w: 1.5, get: (x) => x.destino || "-" },
             { label: "TOTAL", w: 1, get: (x) => money(x.total || 0) },
             { label: "COMISSÃO", w: 1, get: (x) => money(x.comissao || 0) },
@@ -13924,7 +13925,7 @@ function Relatorios({ data }) {
             {
               label: "CLIENTE",
               w: 1.4,
-              get: (x) => x.cliente || x.origem || "-",
+              get: (x) => customerName(x, data.clientes) || x.origem || "-",
             },
             { label: "Nº VENDA", w: 1, get: (x) => x.numeroVenda || "-" },
             { label: "NF / TÍTULO", w: 1, get: (x) => x.titulo || x.nf || "-" },
@@ -14400,7 +14401,7 @@ function Pallets({ data, onChange, audit }) {
               )
                 .filter((x) => x.ativo !== false)
                 .map((x) => (
-                  <option key={x.id}>{x.nome}</option>
+                  <option key={x.id} value={x.nome}>{tipo === "CLIENTE" ? customerName(x) : x.nome}</option>
                 ))}
             </select>
           </Field>
@@ -14438,7 +14439,7 @@ function Pallets({ data, onChange, audit }) {
           <h3>CONTA-CORRENTE POR CLIENTE</h3>
           {clientes.map((n) => (
             <div className="palletRow" key={n}>
-              <b>{n}</b>
+              <b>{customerName(n, data.clientes)}</b>
               <span>SALDO: {saldoCliente(n)} PALLET(S)</span>
               <button
                 className="ghost dark"
@@ -14457,7 +14458,7 @@ function Pallets({ data, onChange, audit }) {
           <h3>CONTA-CORRENTE POR FORNECEDOR</h3>
           {fornecedores.map((n) => (
             <div className="palletRow" key={n}>
-              <b>{n}</b>
+              <b>{customerName(n, data.clientes)}</b>
               <span>SALDO FORTE DEVEDORA: {saldoFornecedor(n)} PALLET(S)</span>
               <button
                 className="ghost dark"
