@@ -21,7 +21,7 @@ for(const [app,path] of sources)test(app+': aprovação exige perfil e transmite
  approve.closest=reject.closest=()=>article;
  const panel={innerHTML:'',querySelector(s){return s==='[role="status"]'?output:{}},querySelectorAll(){return [approve,reject]}};
  const adminBox={querySelector(s){return s==='.fa-admin-panel'?panel:{setAttribute(){}}}};
- const context={adminBox,app,queueOpen:true,lastPendingCount:null,names:{[app]:app},esc:v=>String(v??'').replace(/[<"]/g,c=>c==='<'?'&lt;':'&quot;'),call:async(action,body)=>{calls.push({action,body});return action==='QUEUE'?{pending:[{id:'request1',nome:'Teste',app,cpf:'52998224725',created_at:'2026-10-05'}],roles:[{value:'MASTER',label:'Master'},{value:'CONSULTA',label:'Consulta'}],units:[{establishment_id:'unit1',establishments:{code:'MATRIZ_MG'}}],message:'Fila'}:{message:'Aprovado'}}};
+ const context={adminBox,app,queueOpen:true,lastPendingCount:null,names:{[app]:app},esc:v=>String(v??'').replace(/[<"]/g,c=>c==='<'?'&lt;':'&quot;'),call:async(action,body)=>{calls.push({action,body});return action==='QUEUE'?{pending:[{id:'request1',nome:'Teste',app,cpf:'52998224725',created_at:'2026-10-05'}],roles:[{value:'MASTER',label:'Master'},{value:'OPERADOR_GERAL',label:'Operador geral'}],units:[{establishment_id:'unit1',establishments:{code:'MATRIZ_MG'}}],message:'Fila'}:{message:'Aprovado'}}};
  vm.createContext(context);vm.runInContext(fn+';globalThis.refresh=refreshQueue;',context);
  await context.refresh(true);
  assert.match(panel.innerHTML,/Perfil do usuário \(obrigatório\)/);

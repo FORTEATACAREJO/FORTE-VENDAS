@@ -1,3 +1,4 @@
+import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
 import { useEffect, useMemo, useState } from "react";
 import { putFile } from "./fileStore";
 import { supabase, supabaseConfigured } from "./supabase";
@@ -12,7 +13,7 @@ const CARGOS = [
   "MOTORISTA DE ENTREGA",
   "ADMINISTRADOR",
 ];
-const PERFIS = ["CONSULTA", "VENDAS", "CONFERÊNCIA", "FINANCEIRO", "ADMINISTRADOR"];
+const PERFIS = PROFILE_CODES;
 const UNIDADES = [
   "MATRIZ - MONTE CARMELO/MG",
   "FILIAL - CALDAS NOVAS/GO",
@@ -25,7 +26,7 @@ const MODULOS = [
 ];
 const defaults = {
   nome: "", cpf: "", email: "", whatsapp: "", cargo: "",
-  perfil: "CONSULTA", unidade: "MATRIZ - MONTE CARMELO/MG",
+  perfil: "", unidade: "MATRIZ - MONTE CARMELO/MG",
   permissoes: {}, documento: null, documentoNome: "", statusIa: "NÃO ANALISADO",
   cpfConferido: false,
 };
@@ -47,12 +48,7 @@ const toBase64 = (file) => new Promise((resolve, reject) => {
   reader.onerror = reject;
   reader.readAsDataURL(file);
 });
-const appProfile = (perfil) => ({
-  "CONFERÊNCIA": "CONFERENCIA",
-  FINANCEIRO: "FINANCEIRO",
-  VENDAS: "VENDAS",
-  ADMINISTRADOR: "ADMINISTRADOR",
-}[perfil] || "CONSULTA");
+const appProfile = normalizeProfile;
 
 export default function EmployeesV654({ data, onChange, currentUser, onClose }) {
   const [form, setForm] = useState(defaults);
@@ -60,6 +56,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [pendingRoles, setPendingRoles] = useState({});
   const [quickInvite, setQuickInvite] = useState({ nome:"", cpf:"", email:"", whatsapp:"" });
   const isAdmin = !!currentUser?.admin;
   const isMaster = !!currentUser?.master;
@@ -100,7 +97,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   const changeProfile = (perfil) => setForm((old) => ({
     ...old,
     perfil,
-    permissoes: perfil === "ADMINISTRADOR"
+    permissoes: ["MASTER", "ADMINISTRADOR"].includes(perfil)
       ? Object.fromEntries(MODULOS.map((module) => [module, { visualizar:true, criar:true, editar:true, aprovar:true }]))
       : old.permissoes,
   }));
@@ -125,7 +122,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
   }
 
   function validate() {
-    const missing = [["nome","NOME"],["cpf","CPF"],["email","E-MAIL"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"]]
+    const missing = [["nome","NOME"],["cpf","CPF"],["email","E-MAIL"],["whatsapp","WHATSAPP"],["cargo","FUNÇÃO"],["perfil","PERFIL"]]
       .filter(([key]) => !String(form[key] || "").trim()).map(([, label]) => label);
     if (!form.documento && !form.documentoFileId) missing.push("CNH OU DOCUMENTO DE IDENTIFICAÇÃO");
     if (missing.length) return `PREENCHA: ${missing.join(", ")}.`;
@@ -133,7 +130,8 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     if (!form.cpfConferido) return "CONFIRA O CPF DIRETAMENTE NO DOCUMENTO E MARQUE A CONFIRMAÇÃO OBRIGATÓRIA.";
     if (!/^\S+@\S+\.\S+$/.test(form.email)) return "E-MAIL INVÁLIDO.";
     if (onlyDigits(form.whatsapp).length < 10) return "WHATSAPP INVÁLIDO.";
-    if (form.perfil === "ADMINISTRADOR" && !isAdmin) return "SOMENTE ADMIN OU MASTER PODE CONCEDER PERFIL ADMINISTRADOR.";
+    if (!PERFIS.includes(form.perfil)) return "SELECIONE UM PERFIL VÁLIDO.";
+    if (["MASTER", "ADMINISTRADOR"].includes(form.perfil) && !isMaster) return "SOMENTE MASTER PODE CONCEDER PERFIL ADMINISTRADOR.";
     if (form.perfil === "MASTER" && !isMaster) return "SOMENTE MASTER PODE ALTERAR OUTRO MASTER.";
     return "";
   }
@@ -196,12 +194,14 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     setBusy(false);
   }
 
-  function editEmployee(employee) { setForm({ ...defaults, ...employee, documento: null }); setMessage(""); }
+  function editEmployee(employee) { setForm({ ...defaults, ...employee, perfil:normalizeProfile(employee.perfil), documento: null }); setMessage(""); }
   async function decidePending(item, action) {
+    const role=pendingRoles[item.id] || "";
+    if(action === "APPROVE" && !profileOptionsFor(isMaster?"MASTER":"ADMINISTRADOR").some(x=>x.value===role)) return setMessage("SELECIONE O PERFIL ANTES DE APROVAR.");
     const verb = action === "APPROVE" ? "APROVAR" : "RECUSAR";
     if (!confirm(`${verb} O CADASTRO DE ${item.nome}?`)) return;
     setBusy(true); setMessage(`${verb} CADASTRO…`);
-    const { data: result, error } = await supabase.functions.invoke("employee-approval", { body: { action, id:item.id } });
+    const { data: result, error } = await supabase.functions.invoke("employee-approval", { body: { action, id:item.id, role } });
     setMessage(error ? "NÃO FOI POSSÍVEL CONCLUIR A ANÁLISE." : result?.message || "ANÁLISE CONCLUÍDA.");
     await loadPendingApprovals();
     setBusy(false);
@@ -236,7 +236,7 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
       <label className="field">E-MAIL DO FUNCIONÁRIO<input type="email" value={form.email} onChange={(e)=>patch("email",e.target.value.toLowerCase())}/></label>
       <label className="field">WHATSAPP<input value={form.whatsapp} onChange={(e)=>patch("whatsapp",e.target.value)}/></label>
       <label className="field">FUNÇÃO<select value={form.cargo} onChange={(e)=>patch("cargo",e.target.value)}><option value="">SELECIONE…</option>{CARGOS.map((x)=><option key={x}>{x}</option>)}</select></label>
-      <label className="field">PERFIL<select value={form.perfil} onChange={(e)=>changeProfile(e.target.value)}>{PERFIS.map((x)=><option key={x}>{x}</option>)}</select></label>
+      <label className="field">PERFIL<select required value={form.perfil} onChange={(e)=>changeProfile(e.target.value)}><option value="">Selecione o perfil</option>{profileOptionsFor(isMaster?"MASTER":"ADMINISTRADOR").map((x)=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
       <label className="field">UNIDADE<select value={form.unidade} onChange={(e)=>patch("unidade",e.target.value)}>{UNIDADES.map((x)=><option key={x}>{x}</option>)}</select></label>
       <div className="note"><b>SENHA SEGURA</b><br/>A senha não é armazenada neste cadastro. O funcionário recebe o link no e-mail e cria sua própria senha no primeiro acesso.</div>
     </div>
@@ -254,8 +254,9 @@ export default function EmployeesV654({ data, onChange, currentUser, onClose }) 
     {message && <div className="alert warn">{message}</div>}
     <div className="modalActions"><button className="ghost dark" onClick={()=>setForm(defaults)}>LIMPAR</button><button disabled={busy} onClick={saveAndInvite}>{busy ? "PROCESSANDO…" : "SALVAR E ENVIAR CONVITE"}</button></div>
     <div className="employeeListHead"><h3>AGUARDANDO APROVAÇÃO DO ADMIN / MASTER</h3></div>
-    <div className="cadList">{pendingApprovals.length===0?<div className="cadRow"><div><b>NENHUM CADASTRO AGUARDANDO ANÁLISE</b></div></div>:pendingApprovals.map((item)=><div className="cadRow" key={item.id}><div><b>{item.nome}</b><small>{item.cargo||"FUNÇÃO NÃO INFORMADA"} • {item.cpf||"CPF PENDENTE"} • {item.status}</small></div><div className="cadRowActions">{item.status==="EM_ANALISE"&&<button disabled={busy} onClick={()=>decidePending(item,"APPROVE")}>APROVAR</button>}<button className="dangerBtn" disabled={busy} onClick={()=>decidePending(item,"REJECT")}>RECUSAR</button></div></div>)}</div>
+    <div className="cadList">{pendingApprovals.length===0?<div className="cadRow"><div><b>NENHUM CADASTRO AGUARDANDO ANÁLISE</b></div></div>:pendingApprovals.map((item)=><div className="cadRow" key={item.id}><div><b>{item.nome}</b><small>{item.cargo||"FUNÇÃO NÃO INFORMADA"} • {item.cpf||"CPF PENDENTE"} • {item.status}</small></div><div className="cadRowActions"><select aria-label={`Perfil de ${item.nome}`} required value={pendingRoles[item.id]||""} onChange={e=>setPendingRoles(old=>({...old,[item.id]:e.target.value}))}><option value="">Selecione o perfil</option>{profileOptionsFor(isMaster?"MASTER":"ADMINISTRADOR").map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select>{item.status==="AGUARDANDO_APROVACAO"&&<button disabled={busy} onClick={()=>decidePending(item,"APPROVE")}>APROVAR</button>}<button className="dangerBtn" disabled={busy} onClick={()=>decidePending(item,"REJECT")}>RECUSAR</button></div></div>)}</div>
     <div className="employeeListHead"><h3>FUNCIONÁRIOS CADASTRADOS</h3><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="BUSCAR NOME, CPF, E-MAIL OU FUNÇÃO"/></div>
     <div className="cadList">{filtered.map((employee)=><div className={`cadRow ${employee.ativo === false ? "inactive" : ""}`} key={employee.id}><div><b>{employee.nome}</b><small>{employee.cargo} • {employee.perfil} • {employee.email} • {employee.whatsapp} • {employee.status || "CADASTRADO"}</small></div><div className="cadRowActions"><button className="ghost dark" onClick={()=>editEmployee(employee)}>EDITAR</button><button className={employee.ativo === false ? "secondary" : "dangerBtn"} onClick={()=>deactivate(employee)}>{employee.ativo === false ? "ATIVAR" : "DESATIVAR"}</button></div></div>)}</div>
   </section></div>;
 }
+

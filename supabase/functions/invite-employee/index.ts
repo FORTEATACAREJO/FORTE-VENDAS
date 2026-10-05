@@ -24,13 +24,17 @@ Deno.serve(async (request) => {
     if (!user) throw new Error("SESSÃO INVÁLIDA.");
 
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: profile } = await admin.from("fc_perfis").select("empresa_id,perfil")
+    const { data: profile } = await admin.from("fc_perfis").select("empresa_id,perfil,status_aprovacao,trocar_senha,must_change_password")
       .eq("user_id", user.id).eq("ativo", true).single();
-    if (!profile || !["MASTER", "ADMINISTRADOR"].includes(profile.perfil)) {
+    if (!profile || profile.status_aprovacao !== "APROVADO" || profile.trocar_senha || profile.must_change_password || !["MASTER", "ADMINISTRADOR"].includes(profile.perfil)) {
       throw new Error("OPERAÇÃO EXCLUSIVA DE ADMIN OU MASTER.");
     }
 
     const body = await request.json();
+    const roles=["MASTER","ADMINISTRADOR","OPERADOR_GERAL","OPERADOR_PATIO","MOTORISTA","VENDEDOR_EXTERNO","VENDEDOR_INTERNO"];
+    const perfil=body.perfil === undefined ? "OPERADOR_GERAL" : String(body.perfil||"").trim();
+    if(!roles.includes(perfil)) throw new Error("SELECIONE UM PERFIL VÁLIDO.");
+    if(["MASTER","ADMINISTRADOR"].includes(perfil)&&profile.perfil!=="MASTER") throw new Error("SOMENTE MASTER PODE CONCEDER ESTE PERFIL.");
     const nome = String(body.nome || "").trim().split(/\s+/)[0];
     const whatsapp = normalizePhone(body.whatsapp);
     const cpf = String(body.cpf||"").replace(/\D/g, "");
@@ -41,13 +45,13 @@ Deno.serve(async (request) => {
 
     const existing = await admin.from("fc_usuarios_pendentes").select("id,status")
       .eq("empresa_id", profile.empresa_id).eq("cpf", cpf)
-      .not("status", "in", "(RECUSADO,APROVADO)").maybeSingle();
+      .in("status", ["CADASTRO_PENDENTE","PREENCHIMENTO_OBRIGATORIO","AGUARDANDO_APROVACAO"]).maybeSingle();
     const id = existing.data?.id || crypto.randomUUID();
     const { error } = await admin.from("fc_usuarios_pendentes").upsert({
       id,
       empresa_id: profile.empresa_id,
       nome, cpf, email: email||null,
-      perfil: "CONSULTA",
+      perfil,
       regras: { origem: "CONVITE", completarCadastro: true, criarSenha: true },
       status: "CADASTRO_PENDENTE",
       whatsapp,

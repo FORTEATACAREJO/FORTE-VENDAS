@@ -1,3 +1,4 @@
+import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PalletsV47 from "./PalletsV47.jsx";
 import PaymentSettingsV47 from "./PaymentSettingsV47.jsx";
@@ -699,45 +700,13 @@ const MODULE_GROUPS = [
     modules: ["relatorios"],
   },
 ];
-const PERFIS = [
-  "ADMINISTRADOR",
-  "FINANCEIRO",
-  "VENDAS",
-  "VENDEDOR EXTERNO",
-  "COMPRAS / FORNECEDOR",
-  "LOGÍSTICA / EXPEDIÇÃO",
-  "PÁTIO / EMPILHADEIRA",
-  "CONFERÊNCIA",
-  "CONSULTA",
-  "PERSONALIZADO",
-];
+const PERFIS = PROFILE_CODES;
 const PERFIL_PERMS = {
-  ADMINISTRADOR: ["*"],
-  FINANCEIRO: [
-    "FINANCEIRO",
-    "CONTAS A PAGAR/RECEBER",
-    "SAÚDE FINANCEIRA / TESOURARIA",
-    "RELATÓRIOS",
-  ],
-  VENDAS: [
-    "CLIENTE/CARGA DIRETA",
-    "VENDA BALCÃO",
-    "PAINEL DE CARGAS",
-    "COBRANÇAS ITAÚ",
-    "RELATÓRIOS",
-  ],
-  "VENDEDOR EXTERNO": ["VENDAS EXTERNAS", "RELATÓRIOS"],
-  "COMPRAS / FORNECEDOR": ["FORNECEDOR/PEDIDO", "CADASTROS", "RELATÓRIOS"],
-  "LOGÍSTICA / EXPEDIÇÃO": [
-    "CLIENTE/CARGA DIRETA",
-    "MOTORISTA/VEÍCULO",
-    "FORNECEDOR/PEDIDO",
-    "PAINEL DE CARGAS",
-    "RELATÓRIOS",
-  ],
-  "PÁTIO / EMPILHADEIRA": ["PÁTIO / EXPEDIÇÃO INTERNA", "RELATÓRIOS"],
-  CONFERÊNCIA: ["CONFERÊNCIA/IA", "PAINEL DE CARGAS", "RELATÓRIOS"],
-  CONSULTA: ["RELATÓRIOS"],
+ MASTER:["*"], ADMINISTRADOR:["*"], OPERADOR_GERAL:["RELATÓRIOS"],
+ OPERADOR_PATIO:["PÁTIO / EXPEDIÇÃO INTERNA", "CONFERÊNCIA/IA", "PAINEL DE CARGAS", "RELATÓRIOS"],
+ MOTORISTA:["MOTORISTA/VEÍCULO", "PAINEL DE CARGAS"],
+ VENDEDOR_EXTERNO:["VENDAS EXTERNAS", "RELATÓRIOS"],
+ VENDEDOR_INTERNO:["CLIENTE/CARGA DIRETA", "VENDA BALCÃO", "PAINEL DE CARGAS", "COBRANÇAS ITAÚ", "RELATÓRIOS"],
 };
 const hashSenha = (s) => btoa(unescape(encodeURIComponent(String(s || ""))));
 const isCreditSale = (v) =>
@@ -10993,7 +10962,7 @@ function CadModal({
             ativo: true,
             admin: false,
             permissoes: [],
-            perfil: type === "usuarios" ? "CONSULTA" : "",
+            perfil: "",
             comissionado: type === "usuarios" ? "NÃO" : "",
             tipoComissao: type === "usuarios" ? "PERCENTUAL" : "",
             baseComissao: type === "usuarios" ? "VENDA LÍQUIDA" : "",
@@ -11156,12 +11125,15 @@ function CadModal({
       if (edit === "new" && !f.senha)
         return alert("INFORME A SENHA DO NOVO USUÁRIO.");
       if (f.senha !== f.confirmarSenha) return alert("AS SENHAS NÃO CONFEREM.");
-      obj.admin = obj.perfil === "ADMINISTRADOR";
+      obj.perfil = normalizeProfile(obj.perfil);
+      if (!PERFIS.includes(obj.perfil)) return alert("SELECIONE UM PERFIL VÁLIDO.");
+      const actor = (data.usuarios || []).find(u => u.id === data.currentUserId);
+      if (["MASTER","ADMINISTRADOR"].includes(obj.perfil) && !actor?.master) return alert("SOMENTE MASTER PODE CONCEDER ESTE PERFIL.");
+      obj.master = obj.perfil === "MASTER";
+      obj.admin = ["MASTER","ADMINISTRADOR"].includes(obj.perfil);
       obj.permissoes = obj.admin
         ? ["*"]
-        : obj.perfil === "PERSONALIZADO"
-          ? obj.permissoes || []
-          : PERFIL_PERMS[obj.perfil] || [];
+        : obj.permissoes || PERFIL_PERMS[obj.perfil] || [];
       if (f.senha) obj.senhaHash = hashSenha(f.senha);
       delete obj.senha;
       delete obj.confirmarSenha;
@@ -11398,21 +11370,21 @@ function CadModal({
                   </select>
                 ) : type === "usuarios" && k === "perfil" ? (
                   <select
-                    value={f.perfil || "CONSULTA"}
+                    required
+                    value={normalizeProfile(f.perfil) || ""}
                     onChange={(e) => {
                       const perfil = e.target.value;
                       setF((x) => ({
                         ...x,
                         perfil,
                         permissoes:
-                          perfil === "PERSONALIZADO"
-                            ? x.permissoes || []
-                            : PERFIL_PERMS[perfil] || [],
+                          PERFIL_PERMS[perfil] || [],
                       }));
                     }}
                   >
-                    {PERFIS.map((x) => (
-                      <option key={x}>{x}</option>
+                    <option value="">Selecione o perfil</option>
+                    {profileOptionsFor((data.usuarios || []).find(u=>u.id===data.currentUserId)?.master?"MASTER":"ADMINISTRADOR").map((x) => (
+                      <option key={x.value} value={x.value}>{x.label}</option>
                     ))}
                   </select>
                 ) : type === "usuarios" &&
@@ -11978,7 +11950,7 @@ function CadModal({
                           (f.permissoes || []).includes(p) ||
                           f.permissoes?.includes("*")
                         }
-                        disabled={f.perfil !== "PERSONALIZADO"}
+                        disabled={false}
                         onChange={(e) =>
                           setF((x) => ({
                             ...x,
