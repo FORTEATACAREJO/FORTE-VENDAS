@@ -1,0 +1,39 @@
+name: Testes dos sistemas Forte
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'qa/**'
+      - '.github/workflows/testes-sistemas.yml'
+permissions:
+  contents: read
+jobs:
+  navegadores:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: qa/package-lock.json
+      - name: Instalar Playwright
+        working-directory: qa
+        run: npm ci
+      - name: Instalar navegadores
+        working-directory: qa
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Testar sistemas publicados
+        working-directory: qa
+        run: npm run test:live
+      - name: Guardar relatório e capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testes-sistemas-forte
+          path: |
+            qa/playwright-report
+            qa/reports/playwright-results.json
+            qa/test-results
+          retention-days: 14
