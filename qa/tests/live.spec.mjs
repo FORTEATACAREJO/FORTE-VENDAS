@@ -27,3 +27,10 @@ test('Site: catálogo, marcas e orçamento',async({page},info)=>{
  const budget=page.getByRole('link',{name:/ORÇAMENTO/i}).first();await expect(budget).toBeVisible();await budget.click();
  await expect(page.locator('body')).toContainText(/WhatsApp/i);expect(errors).toEqual([]);await info.attach('catalogo-orcamento',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
 });
+test('Central: telas pequenas e texto ampliado sem rolagem horizontal',async({page})=>{
+ await page.goto('https://site-forte-atacarejo.onrender.com/sistemas.html',{waitUntil:'domcontentloaded'});
+ for(const width of [320,390,768,1440])for(const font of ['16px','32px']){
+  await page.setViewportSize({width,height:1100});await page.evaluate(font=>document.documentElement.style.fontSize=font,font);
+  const size=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));expect(size.scroll,`${width}px / ${font}`).toBeLessThanOrEqual(size.width+1);
+ }
+});

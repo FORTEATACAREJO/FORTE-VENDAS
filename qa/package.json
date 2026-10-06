@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "test:live": "playwright test tests/live.spec.mjs tests/session-sdk.spec.mjs",
+    "test:live": "playwright test tests/live.spec.mjs tests/session-sdk.spec.mjs tests/carga-fixture.spec.mjs",
     "report": "playwright show-report",
     "test:regressions": "node run-regressions.mjs"
   },

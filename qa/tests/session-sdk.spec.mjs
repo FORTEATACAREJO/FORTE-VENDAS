@@ -7,7 +7,7 @@ const built=await build({stdin:{contents:`import {createClient} from '@supabase/
 const code=built.outputFiles[0].text;
 const user={id:'11111111-1111-4111-8111-111111111111',aud:'authenticated',role:'authenticated',email:'fixture@example.invalid',app_metadata:{},user_metadata:{},created_at:'2026-10-01T00:00:00Z'};
 const encode=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
-const token=()=>`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:user.id,aud:'authenticated',role:'authenticated',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600})}.fixture-signature`;
+const token=()=>`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:user.id,aud:'authenticated',role:'authenticated',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600})}.Zml4dHVyZS1zaWduYXR1cmU`;
 test('Sessão: concorrência, persistência e saída explícita com SDK atualizado',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('https://auth.fixture.invalid/**',async route=>{
