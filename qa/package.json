@@ -4,12 +4,13 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "test:live": "playwright test tests/live.spec.mjs",
+    "test:live": "playwright test tests/live.spec.mjs tests/session-sdk.spec.mjs",
     "report": "playwright show-report",
     "test:regressions": "node run-regressions.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@supabase/supabase-js": "2.116.0",
     "esbuild": "0.25.12"
   }
 }
