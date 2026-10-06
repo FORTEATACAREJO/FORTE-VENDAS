@@ -31,6 +31,8 @@ test('Central: telas pequenas e texto ampliado sem rolagem horizontal',async({pa
  await page.goto('https://site-forte-atacarejo.onrender.com/sistemas.html',{waitUntil:'domcontentloaded'});
  for(const width of [320,390,768,1440])for(const font of ['16px','32px']){
   await page.setViewportSize({width,height:1100});await page.evaluate(font=>document.documentElement.style.fontSize=font,font);
-  const size=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));expect(size.scroll,`${width}px / ${font}`).toBeLessThanOrEqual(size.width+1);
+  const size=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
+  if(size.scroll>size.width+1){const offenders=await page.evaluate(()=>Array.from(document.querySelectorAll('body *')).map(el=>({tag:el.tagName,cls:el.className,id:el.id,right:el.getBoundingClientRect().right,left:el.getBoundingClientRect().left,width:el.getBoundingClientRect().width,text:el.textContent.slice(0,50)})).filter(x=>x.width>0&&(x.right>innerWidth+0.5||x.left< -0.5)).slice(0,20));console.log('LAYOUT',JSON.stringify({width,font,size,offenders}));}
+  expect(size.scroll,`${width}px / ${font}`).toBeLessThanOrEqual(size.width+1);
  }
 });
