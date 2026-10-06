@@ -10755,7 +10755,8 @@ const META = {
       ["codigoInterno", "CÓDIGO INTERNO"],
       ["nome", "PRODUTO"],
       ["marca", "MARCA/FORNECEDOR"],
-      ["categoria", "CATEGORIA/TIPO"],
+      ["finalidade", "FINALIDADE"],
+      ["categoria", "CATEGORIA"],
       ["pesoKg", "PESO UNITÁRIO KG", "number"],
       ["unidadeVenda", "UNIDADE DE MEDIDA"],
       ["codigoFornecedor", "CÓDIGO/REFERÊNCIA FORNECEDOR"],
@@ -10890,6 +10891,8 @@ function CadModal({
   const [edit, setEdit] = useState(null);
   const [f, setF] = useState({});
   const [busy, setBusy] = useState(false);
+  const [filtroFinalidade, setFiltroFinalidade] = useState("TODOS");
+  const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [obraCliente, setObraCliente] = useState({
     nome: "",
     endereco: "",
@@ -10942,10 +10945,12 @@ function CadModal({
   }
   const filtered = list.filter(
     (x) =>
-      !norm(search) ||
+      (type !== "produtos" || filtroFinalidade === "TODOS" || upper(x.finalidade || "REVENDA") === filtroFinalidade) &&
+      (type !== "produtos" || filtroCategoria === "TODAS" || upper(x.categoria || "OUTROS") === filtroCategoria) &&
+      (!norm(search) ||
       Object.values(x).some((v) =>
         norm(Array.isArray(v) ? v.join(" ") : v).includes(norm(search)),
-      ),
+      )),
   );
   const begin = (x) => {
     setEdit(x?.id || "new");
@@ -10968,6 +10973,8 @@ function CadModal({
             tipoComissao: type === "usuarios" ? "PERCENTUAL" : "",
             baseComissao: type === "usuarios" ? "VENDA LÍQUIDA" : "",
             modalidade: type === "produtos" ? "CIF" : "",
+            finalidade: type === "produtos" ? "REVENDA" : "",
+            categoria: type === "produtos" ? "CIMENTO" : "",
             senha: "",
             confirmarSenha: "",
           },
@@ -11140,6 +11147,9 @@ function CadModal({
       delete obj.confirmarSenha;
     }
     if (type === "produtos") {
+      obj.finalidade = upper(obj.finalidade || "REVENDA");
+      obj.categoria = upper(obj.categoria || "OUTROS");
+      if (!["REVENDA","USO E CONSUMO","IMOBILIZADO"].includes(obj.finalidade)) return alert("SELECIONE UMA FINALIDADE VÁLIDA.");
       obj.custoTon = Number(obj.custoTon || 0);
       obj.pesoKg = Number(obj.pesoKg || 0);
       obj.descontoPct = Number(obj.descontoPct || 0);
@@ -11323,6 +11333,7 @@ function CadModal({
           + NOVO
         </button>
       </div>
+      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option></select></div>}
       {edit && (
         <div className="editBox">
           <DossieBox
@@ -11346,7 +11357,15 @@ function CadModal({
           <div className="miniGrid">
             {meta.fields.map(([k, l, t]) => (
               <Field key={k} label={l}>
-                {type === "motoristas" && k === "tipoMotorista" ? (
+                {type === "produtos" && k === "finalidade" ? (
+                  <select value={f[k] || "REVENDA"} onChange={(e)=>setF((x)=>({...x,[k]:e.target.value}))}>
+                    <option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option>
+                  </select>
+                ) : type === "produtos" && k === "categoria" ? (
+                  <select value={f[k] || "CIMENTO"} onChange={(e)=>setF((x)=>({...x,[k]:e.target.value}))}>
+                    <option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option>
+                  </select>
+                ) : type === "motoristas" && k === "tipoMotorista" ? (
                   <select
                     value={f[k] || "TRANSPORTE DE CARGA"}
                     onChange={(e) =>
@@ -11989,7 +12008,7 @@ function CadModal({
             key={x.id}
           >
             <div>
-              <b>{(type === "clientes" ? customerName(x) : x.nome) || x.descricao || x.email}</b>
+              <b>{(type === "clientes" ? customerName(x) : x.nome) || x.descricao || x.email}</b>{type === "produtos" && <small>{upper(x.finalidade || "REVENDA")} • {upper(x.categoria || "OUTROS")}</small>}
               <small>
                 {Object.entries(x)
                   .filter(
