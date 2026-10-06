@@ -32,7 +32,7 @@ Referência técnica da atualização de autenticação: [Supabase — coordena�
 
 ## Regressões locais
 
-Foram executadas 25 suites existentes: **22 aprovadas**, com **3 suites antigas de navegador pendentes de adaptação** à tela de acesso e às notificações atuais. Elas não foram contadas como aprovação. Os cenários correspondentes de acesso, navegação e administração pública também são cobertos pelos novos testes publicados.
+Na continuação da auditoria, as **25 suites existentes foram aprovadas**. Os três testes antigos foram adaptados aos módulos de notificações, à tela atual de acesso e ao nome atual do cache. Nenhuma verificação de autorização foi removida. A execução local usou Playwright 1.63.0 com Chromium Headless Shell 134 (o download da versão atual foi incompatível com este ambiente); os 52 casos anteriores foram executados no CI com os navegadores do Playwright 1.63.0.
 
 | Suite | Resultado |
 |---|---|
@@ -56,13 +56,25 @@ Foram executadas 25 suites existentes: **22 aprovadas**, com **3 suites antigas 
 | Fiscal: valores e documentos | Aprovada |
 | Fiscal: certificados | Aprovada |
 | Fiscal: servidor | Aprovada |
-| Sessão: oito sistemas | Pendente: teste antigo |
+| Sessão: oito sistemas | Aprovada |
 | Pátio: conferência | Aprovada |
 | Financeiro: conciliação em navegador | Aprovada |
-| Central: navegação | Pendente: teste antigo |
-| Site: administração | Pendente: teste antigo |
+| Central: navegação | Aprovada |
+| Site: administração | Aprovada |
 
-Além das 22 suites, passaram quatro verificações adicionais: formulários de Carga Direta com preenchimento do cadastro, controles de notificações, worker de notificações e elegibilidade/segurança do backend de notificações. Financeiro foi recompilado e suas três suites de integração, contas e extratos passaram novamente após atualizar o SDK. Os quatro testes de regressão do Frete também passaram novamente.
+Além das 25 suites, passaram quatro verificações adicionais: formulários de Carga Direta com preenchimento do cadastro, controles de notificações, worker de notificações e elegibilidade/segurança do backend de notificações. Financeiro foi recompilado e suas três suites de integração, contas e extratos passaram novamente após atualizar o SDK. Os quatro testes de regressão do Frete também passaram novamente.
+
+## Continuação: testes antes pendentes
+
+- Sessão dos oito sistemas: **9/9 casos**, incluindo CPF normalizado, erro de login, criação de senha, restauração, saída e timeout sem apagar sessão. Os módulos reais de acesso e notificações são servidos juntos; autenticação simulada.
+- Central: **21/21 casos**, incluindo cartões, instalação, texto ampliado, cache, funcionamento sem internet e preservação de caches de outros aplicativos. As requisições externas são limitadas às páginas conhecidas dos contadores de notificações.
+- Administração do site: **8/8 casos**, incluindo acesso MASTER, bloqueio de perfis comuns/inativos/pendentes, recuperação por contato, troca de senha preservando sessão, saída e validações do backend. Autenticação e envio de mensagens são simulados.
+
+## Verificação de produção somente para leitura
+
+As oito últimas implantações no Render estavam com status `live`. Nos três projetos Supabase, `access-standard` v8 e `forte-notifications` v4 estavam ativos; `mobile-carga-direta` v7 estava ativo no projeto compartilhado. As tabelas `fc_app_state`, `fc_perfis` e `access_requests` tinham RLS habilitado. Estes resultados confirmam implantação e configuração, sem comprovar entrega de mensagens ou acesso por usuário.
+
+O banco compartilhado contém **1 estado de empresa, 68 clientes, 6 fornecedores e 43 produtos**. Dos clientes, **63 possuem nome fantasia**. Nos campos usados pelo pedido, **nenhum cliente ou fornecedor possui e-mail ou WhatsApp/telefone preenchido**; nenhum fornecedor possui nome fantasia. Os contatos precisam ser preenchidos no cadastro para aparecerem automaticamente nos pedidos. Não foram inventados ou alterados dados de clientes e fornecedores. As consultas retornaram somente totais e nomes de campos, sem divulgar contatos pessoais.
 
 ## Limites da conclusão
 

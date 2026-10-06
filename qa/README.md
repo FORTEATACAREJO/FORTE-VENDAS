@@ -26,7 +26,7 @@ A execução de regressões dos repositórios locais está em `npm run test:regr
 
 ## Limites
 
-Os testes públicos não comprovam login real de todos os usuários, entrega de e-mail/WhatsApp/push, emissão SEFAZ, integração bancária nem operação nos aparelhos físicos. As regras de negócio são verificadas por simulações locais. Três suites antigas de navegador precisam de adaptação à nova tela de acesso e às notificações; suas falhas não são contadas como aprovação.
+Os testes públicos não comprovam login real de todos os usuários, entrega de e-mail/WhatsApp/push, emissão SEFAZ, integração bancária nem operação nos aparelhos físicos. As regras de negócio são verificadas por simulações locais. As 25 suites de regressão foram aprovadas após atualizar os testes de sessão dos oito sistemas, Central e administração do site. A Central também foi validada sem internet.
 
 ## Resultado e repetição
 
