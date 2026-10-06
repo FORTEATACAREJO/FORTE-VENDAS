@@ -66,6 +66,12 @@ Além das 25 suites, passaram quatro verificações adicionais: formulários de 
 
 ## Continuação: testes antes pendentes
 
+Após publicar as adaptações, uma nova execução no GitHub Actions confirmou **52/52 testes de navegador aprovados**, em 06/10/2026 às 10:54 no horário de Brasília (51,6 segundos para os testes).
+
+[Execução final da continuação](https://github.com/FORTEATACAREJO/FORTE-VENDAS/actions/runs/37474322904) · [Relatório HTML da continuação](https://github.com/FORTEATACAREJO/FORTE-VENDAS/actions/runs/37474322904/artifacts/11417864236)
+
+Commit: `ee5b63fc3d7bb01a9c17ba904b75de8c0e849841`. Os testes atualizados da Central e administração estão no commit `6fb090dcf276eaeb2554f321395b37e0620a144f` do SITE-FORTE-ATACAREJO.
+
 - Sessão dos oito sistemas: **9/9 casos**, incluindo CPF normalizado, erro de login, criação de senha, restauração, saída e timeout sem apagar sessão. Os módulos reais de acesso e notificações são servidos juntos; autenticação simulada.
 - Central: **21/21 casos**, incluindo cartões, instalação, texto ampliado, cache, funcionamento sem internet e preservação de caches de outros aplicativos. As requisições externas são limitadas às páginas conhecidas dos contadores de notificações.
 - Administração do site: **8/8 casos**, incluindo acesso MASTER, bloqueio de perfis comuns/inativos/pendentes, recuperação por contato, troca de senha preservando sessão, saída e validações do backend. Autenticação e envio de mensagens são simulados.
