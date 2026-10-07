@@ -62,6 +62,7 @@ const money = (v) =>
     currency: "BRL",
   });
 const upper = (s) => String(s || "").toUpperCase();
+const produtoEhRevenda = (p) => upper(p?.finalidade || "REVENDA") === "REVENDA";
 const SEFAZ_LOCAL = "http://127.0.0.1:4783";
 const UF_IBGE = { AC:"12", AL:"27", AP:"16", AM:"13", BA:"29", CE:"23", DF:"53", ES:"32", GO:"52", MA:"21", MT:"51", MS:"50", MG:"31", PA:"15", PB:"25", PR:"41", PE:"26", PI:"22", RJ:"33", RN:"24", RS:"43", RO:"11", RR:"14", SC:"42", SP:"35", SE:"28", TO:"17" };
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -5718,7 +5719,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           >
             <option value="">SELECIONE...</option>
             {produtos
-              .filter((p) => p.ativo !== false)
+              .filter((p) => p.ativo !== false && produtoEhRevenda(p))
               .map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.marca ? `${p.marca} • ` : ""}{p.nome}
@@ -6573,7 +6574,7 @@ function VendasExternas({ data, onChange, currentUser }) {
           >
             <option value="">SELECIONE...</option>
             {produtos
-              .filter((p) => p.ativo !== false)
+              .filter((p) => p.ativo !== false && produtoEhRevenda(p))
               .map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.nome}
@@ -10891,7 +10892,7 @@ function CadModal({
   const [edit, setEdit] = useState(null);
   const [f, setF] = useState({});
   const [busy, setBusy] = useState(false);
-  const [filtroFinalidade, setFiltroFinalidade] = useState("TODOS");
+  const [filtroFinalidade, setFiltroFinalidade] = useState("REVENDA");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [obraCliente, setObraCliente] = useState({
     nome: "",
@@ -11361,7 +11362,7 @@ function CadModal({
           + NOVO
         </button>
       </div>
-      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option></select></div>}
+      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option></select></div>}
       {edit && (
         <div className="editBox">
           <DossieBox
@@ -11391,7 +11392,7 @@ function CadModal({
                   </select>
                 ) : type === "produtos" && k === "categoria" ? (
                   <select value={f[k] || "CIMENTO"} onChange={(e)=>setF((x)=>({...x,[k]:e.target.value}))}>
-                    <option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option>
+                    <option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option>
                   </select>
                 ) : type === "motoristas" && k === "tipoMotorista" ? (
                   <select
@@ -11490,7 +11491,7 @@ function CadModal({
                   >
                     <option value="">SEM PADRÃO</option>
                     {(data.pagamentos || [])
-                      .filter((p) => p.ativo !== false)
+                      .filter((p) => p.ativo !== false && produtoEhRevenda(p))
                       .map((p) => (
                         <option key={p.id}>{p.descricao}</option>
                       ))}
