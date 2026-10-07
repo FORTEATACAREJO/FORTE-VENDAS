@@ -11490,7 +11490,7 @@ function CadModal({
                   >
                     <option value="">SEM PADRÃO</option>
                     {(data.pagamentos || [])
-                      .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
+                      .filter((p) => p.ativo !== false)
                       .map((p) => (
                         <option key={p.id}>{p.descricao}</option>
                       ))}
