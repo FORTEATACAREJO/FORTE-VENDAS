@@ -11316,10 +11316,10 @@ function CadModal({
   function removeRecord(x) {
     if (!isAdmin) return alert("SOMENTE ADMIN/MASTER PODE EXCLUIR CADASTROS.");
     const refs = {
-      produtos: ["itens","orcamentos","vendas","pedidos","cargas","precosClientes","estoques"],
-      clientes: ["orcamentos","vendas","pedidos","cargas","receber","precosClientes"],
-      fornecedores: ["pedidos","cargas","pagar","produtos"],
-      motoristas: ["cargas","fretes","viagens"],
+      produtos: ["itens","orcamentos","vendas","pedidos","cargas","precosClientes","estoques","estoqueMovimentos","estoqueReservas","notaItens","orcamentoItens","vendaItens","cargaItens","fornecedorCustos"],
+      clientes: ["orcamentos","vendas","pedidos","cargas","receber","precosClientes","obras","contasReceber","recebimentos","documentos","palletMovimentos"],
+      fornecedores: ["pedidos","cargas","pagar","produtos","contasPagar","fornecedorCustos","palletMovimentos"],
+      motoristas: ["cargas","fretes","viagens","documentos","motoristaVeiculos"],
       usuarios: ["orcamentos","vendas","auditoria"],
     };
     const id = x.id;
