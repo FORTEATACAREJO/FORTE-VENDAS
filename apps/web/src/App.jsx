@@ -5718,7 +5718,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           >
             <option value="">SELECIONE...</option>
             {produtos
-              .filter((p) => p.ativo !== false)
+              .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
               .map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.marca ? `${p.marca} • ` : ""}{p.nome}
@@ -6573,7 +6573,7 @@ function VendasExternas({ data, onChange, currentUser }) {
           >
             <option value="">SELECIONE...</option>
             {produtos
-              .filter((p) => p.ativo !== false)
+              .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
               .map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.nome}
@@ -6761,7 +6761,7 @@ function Estoque({ data, onChange }) {
   const marcas = [
     ...new Set(
       (data.produtos || [])
-        .filter((p) => p.ativo !== false)
+        .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
         .map((p) => p.marca)
         .filter(Boolean),
     ),
@@ -6809,7 +6809,7 @@ function Estoque({ data, onChange }) {
     setReferencia("");
   }
   const linhas = data.produtos
-    .filter((p) => p.ativo !== false)
+    .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
     .map((p) => ({ p, ...summary(p) }));
   const fullLedger = produtoId
     ? buildStockLedger(data, "ESTOQUE ÚNICO", produtoId)
@@ -10891,7 +10891,7 @@ function CadModal({
   const [edit, setEdit] = useState(null);
   const [f, setF] = useState({});
   const [busy, setBusy] = useState(false);
-  const [filtroFinalidade, setFiltroFinalidade] = useState("TODOS");
+  const [filtroFinalidade, setFiltroFinalidade] = useState("REVENDA");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [obraCliente, setObraCliente] = useState({
     nome: "",
@@ -10910,7 +10910,7 @@ function CadModal({
     validade: "",
     observacoes: "",
   });
-  const produtosAtivos = (data.produtos || []).filter((p) => p.ativo !== false);
+  const produtosAtivos = (data.produtos || []).filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA");
   const regrasPrecoCliente = (data.precosClientes || []).filter(
     (r) => r.clienteId === edit,
   );
@@ -11185,7 +11185,7 @@ function CadModal({
         type === "clientes" && edit === "new"
           ? [
               ...(d.precosClientes || []),
-              ...(d.produtos || []).filter((p) => p.ativo !== false).map((p) => ({
+              ...(d.produtos || []).filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA").map((p) => ({
                 id: uid("pcp"), clienteId: newId, produtoId: p.id,
                 precoTabela: Number(p.precoTabela || 0), descontoPct: 0,
                 atualizadoEm: nowISO(),
@@ -11361,7 +11361,7 @@ function CadModal({
           + NOVO
         </button>
       </div>
-      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option></select></div>}
+      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>OUTROS</option></select></div>}
       {edit && (
         <div className="editBox">
           <DossieBox
@@ -11504,7 +11504,7 @@ function CadModal({
                   >
                     <option value="">SELECIONE...</option>
                     {(data.produtos || [])
-                      .filter((p) => p.ativo !== false)
+                      .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
                       .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.marca} • {p.nome}
@@ -13711,7 +13711,7 @@ function Relatorios({ data }) {
   const marcasEstoque = [
     ...new Set(
       (data.produtos || [])
-        .filter((p) => p.ativo !== false)
+        .filter((p) => p.ativo !== false && upper(p.finalidade || "REVENDA") === "REVENDA")
         .map((p) => p.marca)
         .filter(Boolean),
     ),
