@@ -11313,6 +11313,34 @@ function CadModal({
       ),
     }));
   }
+  function removeRecord(x) {
+    if (!isAdmin) return alert("SOMENTE ADMIN/MASTER PODE EXCLUIR CADASTROS.");
+    const refs = {
+      produtos: ["itens","orcamentos","vendas","pedidos","cargas","precosClientes","estoques"],
+      clientes: ["orcamentos","vendas","pedidos","cargas","receber","precosClientes"],
+      fornecedores: ["pedidos","cargas","pagar","produtos"],
+      motoristas: ["cargas","fretes","viagens"],
+      usuarios: ["orcamentos","vendas","auditoria"],
+    };
+    const id = x.id;
+    const linked = (refs[type] || []).some((collection) =>
+      (data[collection] || []).some((r) =>
+        Object.entries(r || {}).some(([k,v]) => /(^id$)/i.test(k) ? false : (/id$/i.test(k) && v === id))
+      )
+    );
+    if (linked) {
+      if (x.ativo === false) return alert("CADASTRO POSSUI HISTÓRICO E JÁ ESTÁ DESATIVADO. A EXCLUSÃO FÍSICA FOI BLOQUEADA.");
+      if (!confirm("ESTE CADASTRO POSSUI HISTÓRICO. ELE NÃO SERÁ APAGADO. DESEJA DESATIVAR?")) return;
+      toggle(id);
+      return;
+    }
+    if (!confirm("EXCLUIR DEFINITIVAMENTE ESTE CADASTRO SEM HISTÓRICO?")) return;
+    onChange((d) => ({
+      ...d,
+      [type]: (d[type] || []).filter((a) => a.id !== id),
+      auditoria: [...(d.auditoria || []), {id:uid("aud"),acao:"EXCLUSÃO DE CADASTRO SEM HISTÓRICO",referencia:id,detalhes:type+" • "+(x.nome||x.descricao||x.email||id),dataHora:nowISO()}],
+    }));
+  }
   return (
     <Modal title={`CADASTRO — ${meta.title}`} onClose={onClose} wide>
       <div className="cadToolbar">
@@ -12038,6 +12066,9 @@ function CadModal({
               >
                 {x.ativo === false ? "ATIVAR" : "DESATIVAR"}
               </button>
+              {isAdmin && ["produtos","clientes","fornecedores","motoristas"].includes(type) && (
+                <button className="dangerBtn" onClick={() => removeRecord(x)}>EXCLUIR</button>
+              )}
             </div>
           </div>
         ))}
