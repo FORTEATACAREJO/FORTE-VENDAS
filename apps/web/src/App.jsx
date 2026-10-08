@@ -1,3 +1,4 @@
+import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
 import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -761,12 +762,13 @@ const custoFornecedor = (d, produtoId, condicaoPagamento, marca = "") => {
   );
 };
 export default function App() {
+  const drawer=useDrawer();
   const [data, setData] = useState(() => applyAuthUser(loadData(seed)));
   const cloudReady = useRef(false);
   const [cloudError,setCloudError]=useState("");
   useEffect(()=>{const listener=e=>setCloudError(e.detail||"");window.addEventListener("forte-cloud-status",listener);return()=>window.removeEventListener("forte-cloud-status",listener)},[]);
   const cloudTimer = useRef(null);
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState(()=>new URLSearchParams(window.location.search).get("app")==="financeiro"?"group:financeiro":"home");
   const [globalSearch, setGlobalSearch] = useState("");
   const [selectedSales, setSelectedSales] = useState([]);
   const [driverSearch, setDriverSearch] = useState("");
@@ -824,7 +826,7 @@ export default function App() {
     return !!rule[action] || (action !== "visualizar" && !!rule.editar);
   };
   const canAccessTab = (screen, action = "visualizar") => canAccessGroup(groupForTab(screen), action);
-  const visibleModuleGroups = MODULE_GROUPS.filter((g) => g.id !== "financeiro" && canAccessGroup(g.id));
+  const visibleModuleGroups = MODULE_GROUPS.filter((g) => canAccessGroup(g.id));
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
     if (tab !== "home" && requestedGroup && !canAccessGroup(requestedGroup))
@@ -2095,16 +2097,11 @@ export default function App() {
     .filter((c) => c.status !== "CANCELADA")
     .slice()
     .reverse();
-  const financeiroStandalone = window.location.pathname.endsWith("/financeiro.html") || new URLSearchParams(window.location.search).get("app")==="financeiro";
-  if(financeiroStandalone) {
-    if(!canAccessGroup("financeiro"))return <main className="main"><h1>ACESSO AO FINANCEIRO NÃO AUTORIZADO</h1><a href="/">VOLTAR AO FORTE VENDAS</a></main>;
-    return <FinanceiroHub data={data} onChange={setData} currentUser={currentUser}/>;
-  }
   return (
-    <div className="app">
+    <div className="app forte-ui forte-vendas">
       {cloudError&&<div role="alert" className="alert warn" style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,padding:16}}>{cloudError}</div>}
       <SefazAutoSync data={data} onChange={setData} currentUser={currentUser} />
-      <aside className="sideNav">
+      <Drawer drawer={drawer}><button onClick={()=>setModal({type:"ajudaIa",tab})}>Ajuda IA</button>
         <div className="sideBrand">
           <b>FORTE VENDAS</b>
           <small>Gestão de Cargas e Vendas</small>
@@ -2148,6 +2145,7 @@ export default function App() {
         >
           ▤ FORNECEDORES / SUPRIMENTOS
         </button>}
+        {canAccessGroup("financeiro") && <button className={tab === "group:financeiro" ? "sideActive" : ""} onClick={() => setTab("group:financeiro")}>$ FINANCEIRO</button>}
         {canAccessGroup("cadastros") && <button
           className={tab === "group:cadastros" ? "sideActive" : ""}
           onClick={() => setTab("group:cadastros")}
@@ -2177,12 +2175,11 @@ export default function App() {
           <b>V6.9.0</b>
           <span>● Online</span>
         </div>
-      </aside>
+      </Drawer>
       <main className="main">
-        <header className="header dashboardHeader">
+        <header className="header dashboardHeader forte-header"><MenuButton drawer={drawer}/><Brand label="FORTE VENDAS"/>
           <div>
-            <h1>FORTE VENDAS</h1>
-            <small>FORTE ATACAREJO — CONTROLE OPERACIONAL + IA</small>
+
           </div>
           <div className="globalSearchWrap">
             <input
@@ -2218,12 +2215,7 @@ export default function App() {
           </div>
           <div className="headerActions">
             <div data-forte-top-actions aria-label="Ações do sistema" />
-            <button
-              className="ghost"
-              onClick={() => setModal({ type: "ajudaIa", tab })}
-            >
-              ? AJUDA IA
-            </button>
+
             <div className="userSessionBox">
               <span className="mode">{currentUser?.nome}</span>
               {supabaseConfigured && <button className="dangerBtn sessionExit" onClick={()=>supabase?.auth.signOut()}>SAIR</button>}
@@ -2342,6 +2334,8 @@ export default function App() {
           })()}
         {tab === "home" && (
           <HomeCompactV47
+            data={data}
+            onSale={()=>setModal({type:"sale"})}
             groups={visibleModuleGroups}
             canIntegrations={canAccessGroup("integracoes")}
             onOpen={(id) => setTab("group:" + id)}
@@ -2352,12 +2346,7 @@ export default function App() {
         <div className="systemDate">
           <b>DATA/HORA DO SISTEMA:</b> {stamp()}
         </div>
-        <nav className="mobileQuickActions">
-          <button onClick={() => setModal({ type: "sale" })}>＋ PEDIDO RÁPIDO</button>
-          <button onClick={() => setModal({ type: "cadastroIa" })}>✦ CADASTRO COM IA</button>
-          <button onClick={() => setTab("todasCargas")}>▣ CARGAS</button>
-          <button onClick={() => setTab("conferencia")}>✓ DOCUMENTOS</button>
-        </nav>
+        <BottomNav active={tab} items={[{id:"home",label:"Início",icon:"home"},...(canAccessGroup("vendas")?[{id:"group:vendas",label:"Vendas",icon:"file"},{id:"new-sale",label:"Vender",icon:"plus",primary:true}]:[]),...(canAccessGroup("logistica")?[{id:"todasCargas",label:"Cargas",icon:"truck"}]:[])]} onSelect={id=>id==="new-sale"?setModal({type:"sale"}):setTab(id)} onMore={()=>drawer.setOpen(true)}/>
         {tab !== "home" && !tab.startsWith("group:") && tab !== "clientes" && (
           <ModuleAttachBar
             data={data}
@@ -14554,3 +14543,4 @@ function Pallets({ data, onChange, audit }) {
     </section>
   );
 }
+
