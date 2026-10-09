@@ -10776,6 +10776,7 @@ const META = {
       ["precoVendaSugerido", "PREÇO VENDA SUGERIDO R$", "number"],
       ["margemSugerida", "MARGEM SUGERIDA %", "number"],
       ["precoTabela", "PREÇO DE TABELA R$", "number"],
+      ["precoNegociado", "PREÇO NEGOCIADO R$", "number"],
       ["palletQtd", "QUANTIDADE POR PALLET", "number"],
       ["modalidade", "MODALIDADE CIF/FOB"],
       ["ultimaAtualizacaoCusto", "DATA ÚLTIMA ATUALIZAÇÃO"],

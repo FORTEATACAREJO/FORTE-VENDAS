@@ -28,3 +28,14 @@ Forte Vendas → Vendas e Compras → Pedidos e Carregamento. Três abas indepen
 - Leitura por IA exige OPENAI_API_KEY no ambiente das funções. Ausência/falha apresenta mensagem e preserva preenchimento manual.
 - Nenhum pedido, boleto ou frete real foi enviado durante os testes.
 - Advisors indicam avisos preexistentes sobre funções de segurança e proteção de senhas; nenhuma tabela nova ficou sem RLS/política. Referência: https://supabase.com/docs/guides/database/database-linter
+
+## Ajustes de 09/10 — Pedido ao fornecedor
+
+- Expedição/origem usa seleção pesquisável dos locais ativos; destino permite selecionar unidade/rota e informar endereço.
+- Busca mostra os nomes, placas e limites dos motoristas durante a digitação.
+- Capacidade bloqueada no formulário e novamente validada no servidor.
+- Preço negociado unitário no cadastro de produtos é a fonte única do custo; campo do pedido somente leitura. Produtos sem preço cadastrado não permitem gravar a compra.
+- Pallets calculados por produto a partir da quantidade por pallet cadastrada, arredondando para cima. Nenhum valor manual prevalece no servidor. Sem pallets resulta em zero.
+- Checkbox de NF de pallets retirado. Aplicabilidade documental derivada da regra de pallets, com emissão feita pelo fornecedor e conferência no dossiê.
+- Contato (34) 99920-9335 no rodapé do pedido e em todas as páginas do PDF.
+- Verificação: build, 35 testes de domínio/endpoint/estado e navegação Chromium em 390 e 1440 pixels, incluindo bloqueio de 40.050 kg para limite de 40.000 kg, pesquisa visível e 16 pallets para 800 unidades com 50 por pallet.
