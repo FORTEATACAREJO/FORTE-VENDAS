@@ -8,6 +8,9 @@ import HomeCompactV47 from "./HomeCompactV47.jsx";
 import EmployeesV654 from "./EmployeesV654.jsx";
 import PreConferenciaBoletos from "./PreConferenciaBoletos.jsx";
 import ItauPagamentos from "./ItauPagamentos.jsx";
+import ItauCollectionsReport from "./ItauCollectionsReport.jsx";
+import {collectionReport,todayBrazil} from "./itau-report.js";
+import {createCollectionPDF} from "./itau-report-pdf.js";
 import InfinitePay from "./InfinitePay.jsx";
 import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
@@ -3264,6 +3267,7 @@ export default function App() {
         {tab === "itau" && (
           <section className="card">
             <div className="sectionHead"><div><h2>COBRANÇAS ITAÚ</h2><p>BOLETOS DE CLIENTES, VENCIDOS, CORREÇÕES, REEMISSÕES, REENVIOS E OCORRÊNCIAS. SEM ACESSO A SALDOS, DRE OU PAGAMENTOS A FORNECEDORES.</p></div><button onClick={() => setModal({ type: "emissorBoletos", canal: "COBRANÇA ITAÚ" })}>EMITIR / CORRIGIR BOLETO</button></div>
+            <ItauCollectionsReport data={data} />
             <RecebiveisItau data={data} onChange={setData} />
             <FrancesinhaItau data={data} />
           </section>
@@ -8183,9 +8187,10 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
     alert("ENVIO AUTOMÁTICO REGISTRADO. OS DOCUMENTOS SERÃO ENVIADOS ASSIM QUE O ITAÚ DEVOLVER OS BOLETOS VÁLIDOS.");
   }
   function relatorio(tipo) {
-    const hoje=todayISO();
-    const lista=boletos.filter((b) => tipo === "VENCIDOS" ? b.vencimento < hoje && !upper(b.status).includes("LIQUID") : b.vencimento >= hoje && !upper(b.status).includes("LIQUID"));
-    pdfSimple(`RELATÓRIO CONDENSADO — BOLETOS ${tipo}`, [...lista.map((b) => `${customerName(b, data.clientes)} | VENDA ${b.numeroVenda} | PARC. ${b.parcela || 1}/${b.totalParcelas || 1} | VENC. ${formatDateBR(b.vencimento)} | ${money(b.valor)} | ${b.status}`),"",`TOTAL: ${money(lista.reduce((s,b)=>s+Number(b.valor||0),0))} • ${lista.length} TÍTULO(S)`], `BOLETOS-${tipo}-${todayISO()}.pdf`);
+    const filters=tipo === "VENCIDOS" ? {status:"VENCIDO"} : {status:"ABERTOS",start:todayBrazil()};
+    const connection=(data.bankConnections||[]).find(c=>upper(c.provedor).includes("ITAU"))||{};
+    const report=collectionReport(data,filters);
+    createCollectionPDF(report,filters,connection).save(`BOLETOS-${tipo}-${report.today}.pdf`);
   }
   return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={onClose} wide>
     <div className="transportBox"><p className="note">ESTA TELA PERMITE EMITIR, ENVIAR E ALTERAR BOLETOS DA PRÓPRIA VENDA. A ALTERAÇÃO É LIBERADA NO DIA SEGUINTE À EMISSÃO, CONFORME O FLUXO ATUAL DO ITAÚ. NÃO EXIBE A FRANCESINHA DETALHADA.</p><div className="actions"><button className="ghost dark" onClick={() => relatorio("A VENCER")}>RELATÓRIO A VENCER</button><button className="ghost dark" onClick={() => relatorio("VENCIDOS")}>RELATÓRIO VENCIDOS</button></div></div>
