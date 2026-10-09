@@ -52,7 +52,8 @@ const generateCsr = () => {
   return result.stdout.trim();
 };
 const activateCertificate = async () => {
-  const token = required("ITAU_ACTIVATION_TOKEN");
+  const token = required("ITAU_ACTIVATION_TOKEN").replace(/\s+/g, "");
+  if (!token || /[^\x21-\x7e]/.test(token)) throw new Error("Token de ativação inválido; confira o valor no Render");
   const csr = process.env.ITAU_CSR?.trim() || generateCsr();
   const response = await fetch("https://sts.itau.com.br/seguranca/v1/certificado/solicitacao", {
     method: "POST",
@@ -113,7 +114,8 @@ const server = http.createServer(async (req, res) => {
     }
     return send(res, 404, { error: "Não encontrado" });
   } catch (error) {
-    console.error(error.message);
+    // Never print raw third-party error messages: they may contain bearer tokens or private data.
+    console.error("Falha na requisição", { name: error?.name || "Error", code: error?.code || error?.cause?.code || "INTEGRATION_ERROR" });
     return send(res, 500, { error: "Falha segura na integração Itaú" });
   }
 });
