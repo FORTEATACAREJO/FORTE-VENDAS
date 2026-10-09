@@ -11,7 +11,8 @@ import ItauPagamentos from "./ItauPagamentos.jsx";
 import InfinitePay from "./InfinitePay.jsx";
 import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
-import { UnifiedSalesPanel, SupplierPurchasesPanel, LoadingOrdersPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
+import { UnifiedSalesPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
+import OrdersWorkspace from "./OrdersWorkspace.jsx";
 import SefazAutoSync from "./SefazAutoSync.jsx";
 import CloudHealth from "./CloudHealth.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
@@ -623,7 +624,7 @@ const MODULES = [
     "COMPRA FORTE",
     "Reposição de estoque e cargas mistas.",
   ],
-  ["comprasFornecedor", "15A", "COMPRA AO FORNECEDOR", "Pedido, capacidade, motorista, envio e ordem de carregamento."],
+  ["comprasFornecedor", "15A", "PEDIDOS E CARREGAMENTO", "Pedido ao fornecedor, venda interna e ordem independente."],
   ["painelCompras", "15B", "PAINEL DE COMPRAS", "NF-e SEFAZ, CNPJ, estoque fiscal e destinação."],
   ["ordensCarregamento", "15C", "ORDENS DE CARREGAMENTO", "Operação sem informações financeiras."],
   [
@@ -796,8 +797,29 @@ export default function App() {
   const [reportStart, setReportStart] = useState(todayISO());
   const [reportEnd, setReportEnd] = useState(todayISO());
   const [mobileMenu, setMobileMenu] = useState(false);
+  const workflowBusy = useRef(false);
+  const [workflowInitialTab,setWorkflowInitialTab]=useState("fornecedor");
   useEffect(() => {let active=true;if(!supabaseConfigured)return;loadCloudState().then(remote=>{if(!active)return;cloudReady.current=true;if(remote){const funcionarios=[...(remote.funcionarios||[])];for(const oficial of seed.funcionarios||[])if(!funcionarios.some(x=>x.id===oficial.id||String(x.cpf||"").replace(/\D/g,"")===oficial.cpf))funcionarios.push(oficial);setData(applyAuthUser({...remote,settings:{...seed.settings,...(remote.settings||{})},funcionarios,unidadesFiscaisHistoricas:remote.unidadesFiscaisHistoricas||seed.unidadesFiscaisHistoricas}))}else saveCloudState(data).catch(e=>console.error("FALHA AO ENVIAR BASE INICIAL AO SUPABASE",e))}).catch(e=>console.error("FALHA AO CARREGAR BASE SUPABASE",e));return()=>{active=false}},[]);
-  useEffect(() => {saveData(data);if(!supabaseConfigured||!cloudReady.current)return;clearTimeout(cloudTimer.current);cloudTimer.current=setTimeout(()=>saveCloudState(data).catch(e=>console.error("FALHA AO SALVAR BASE SUPABASE",e)),800);return()=>clearTimeout(cloudTimer.current)}, [data]);
+  useEffect(() => {saveData(data);if(!supabaseConfigured||!cloudReady.current||workflowBusy.current)return;clearTimeout(cloudTimer.current);cloudTimer.current=setTimeout(()=>saveCloudState(data).catch(e=>console.error("FALHA AO SALVAR BASE SUPABASE",e)),800);return()=>clearTimeout(cloudTimer.current)}, [data]);
+  async function commitOrderWorkflow(body) {
+    if (!supabaseConfigured) throw new Error("Esta operação exige conexão com o servidor.");
+    if (workflowBusy.current) throw new Error("Aguarde a operação atual.");
+    workflowBusy.current = true;
+    clearTimeout(cloudTimer.current);
+    try {
+      await saveCloudState(data);
+      const {data:receipt,error} = await supabase.functions.invoke("orders-workflow", {body});
+      if (error || receipt?.error) {
+        let message=receipt?.error;
+        if (!message && error?.context) try {message=(await error.context.json()).error;} catch {}
+        throw new Error(message || error?.message || "Não foi possível confirmar a operação.");
+      }
+      const remote=await loadCloudState();
+      if (!remote) throw new Error("Operação processada; atualize os dados para conferir o resultado.");
+      setData(applyAuthUser(remote));
+      return receipt;
+    } finally {workflowBusy.current=false;}
+  }
   const currentUser =
     data.usuarios.find((u) => u.id === data.currentUserId) || data.usuarios[0];
   const isAdmin = !!currentUser?.admin;
@@ -822,6 +844,8 @@ export default function App() {
       const key = permissionKeyByGroup[groupId] || "";
       return permissions.some((item) => norm(item).includes(norm(key)) || norm(key).includes(norm(item)));
     }
+    const appPermission=({vendas:"vendas",logistica:"carga-direta",conferencia:"vendas",cobrancas:"vendas",cadastros:"vendas"})[groupId];
+    if(appPermission&&permissions[appPermission]===true)return true;
     const rule = permissions[permissionKeyByGroup[groupId]] || {};
     return !!rule[action] || (action !== "visualizar" && !!rule.editar);
   };
@@ -1415,19 +1439,19 @@ export default function App() {
         x.id === c.id
           ? {
               ...c,
-              pedidoFornecedorEnviado: true,
-              fase: "AGUARDANDO Nº PEDIDO FORNECEDOR",
+              pedidoFornecedorPreparado: true,
+              fase: "PEDIDO PREPARADO — ENVIO NÃO COMPROVADO",
             }
           : x,
       ),
     }));
     audit(
-      "PEDIDO AO FORNECEDOR GERADO/ENVIADO",
+      "PEDIDO AO FORNECEDOR PREPARADO",
       c.id,
       `${enviarWpp ? "WHATSAPP " : ""}${enviarEmail ? "E-MAIL" : ""}`,
     );
     alert(
-      "PEDIDO GERADO. O PDF FOI BAIXADO. OS CANAIS MARCADOS FORAM ABERTOS EM MODO DE TESTE.",
+      "PDF GERADO E CANAIS ABERTOS. O ENVIO PRECISA SER COMPROVADO NO PAINEL DE PEDIDOS.",
     );
   }
   function incorporarNumeroPedido() {
@@ -1572,14 +1596,14 @@ export default function App() {
         x.id === c.id
           ? {
               ...x,
-              ordemMotoristaEnviada: true,
-              fase: "CONFERÊNCIA",
+              ordemMotoristaPreparada: true,
+              fase: "ORDEM PREPARADA — ENVIO NÃO COMPROVADO",
               status: "VERMELHO",
             }
           : x,
       ),
     }));
-    audit("ORDEM AO MOTORISTA GERADA/ENVIADA", c.id);
+    audit("ORDEM AO MOTORISTA PREPARADA", c.id);
     setTab("conferencia");
   }
   function cancelLoad(id) {
@@ -3099,10 +3123,10 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
-        {tab === "painelUnicoVendas" && <UnifiedSalesPanel data={data} onChange={setData} currentUser={currentUser} canRoute={canAccessTab("painelUnicoVendas", "editar")} onNavigate={setTab} />}
-        {tab === "comprasFornecedor" && <SupplierPurchasesPanel data={data} onChange={setData} currentUser={currentUser} onNavigate={setTab} />}
+        {tab === "painelUnicoVendas" && <UnifiedSalesPanel data={data} onChange={setData} currentUser={currentUser} canRoute={canAccessTab("painelUnicoVendas", "editar")} onNavigate={id=>{if(id==="clientes"){setWorkflowInitialTab("venda");setTab("comprasFornecedor");}else setTab(id);}} />}
+        {tab === "comprasFornecedor" && <OrdersWorkspace initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "ordensCarregamento" && <LoadingOrdersPanel data={data} onNavigate={setTab} />}
+        {tab === "ordensCarregamento" && <OrdersWorkspace data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
             data={data}
@@ -3367,6 +3391,7 @@ export default function App() {
           data={data}
           onChange={setData}
           canal={modal.canal}
+          initialVendaId={modal.vendaId}
           currentUser={currentUser}
           onClose={() => setModal(null)}
         />
@@ -8094,12 +8119,13 @@ function SaudeFinanceira({ data, onChange }) {
   );
 }
 
-function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose }) {
-  const vendas = (canal === "VENDA BALCÃO" ? data.vendasBalcao || [] : data.vendas || [])
-    .filter((v) => v.numeroVenda && (canal !== "VENDA BALCÃO" || v.status === "CONCLUÍDA"));
+function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, initialVendaId = "" }) {
+  const rawSales=(canal === "VENDA BALCÃO" ? data.vendasBalcao || [] : data.vendas || [])
+    .filter(v=>v.numeroVenda&&v.status!=="CANCELADA"&&(canal!=="VENDA BALCÃO"||v.status==="CONCLUÍDA"));
+  const vendas=Object.values(rawSales.reduce((groups,v)=>{const key=v.workflowInterno?(v.grupoPedidoId||v.id):v.id;if(!groups[key])groups[key]={...v,id:key,totalGeral:0,vendaIds:[]};const group=groups[key];group.totalGeral+=Number(v.totalGeral||v.totalVenda||v.total||v.valorTotal||v.valor||Number(v.qtd||0)*Number(v.precoUnitario||0));group.vendaIds.push(v.id);return groups;},{}));
   const boletos = (data.boletosClientes || []).filter((b) => b.canal === canal);
   const itau = (data.bankConnections || []).find((x) => upper(x.provedor).includes("ITAU")) || {};
-  const [vendaId, setVendaId] = useState("");
+  const [vendaId, setVendaId] = useState(vendas.find(v=>v.id===initialVendaId||v.vendaIds.includes(initialVendaId))?.id||initialVendaId);
   const [parcelas, setParcelas] = useState("1");
   const [primeiroVencimento, setPrimeiroVencimento] = useState(todayISO());
   const [intervalo, setIntervalo] = useState("30");
@@ -8115,10 +8141,11 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose }) {
   const [incluirNota, setIncluirNota] = useState(false);
   const [envioAutomatico, setEnvioAutomatico] = useState(true);
   const venda = vendas.find((v) => v.id === vendaId);
-  const total = Number(venda?.total || venda?.valorTotal || venda?.valor || 0);
+  const total = Number(venda?.totalGeral || venda?.totalVenda || venda?.total || venda?.valorTotal || venda?.valor || Number(venda?.qtd||0)*Number(venda?.precoUnitario||0));
   function emitir() {
     const qtd = Math.max(1, Number(parcelas || 1));
     if (!venda || !total) return alert("SELECIONE UMA VENDA CONCLUÍDA COM VALOR.");
+    if ((data.boletosClientes || []).some(b=>(b.vendaId===venda.id||venda.vendaIds.includes(b.vendaId))&&b.status!=="CANCELADO")) return alert("ESTA VENDA JÁ POSSUI COBRANÇAS. CONFIRA AS PARCELAS EXISTENTES ANTES DE SOLICITAR NOVAS.");
     const juros = Number(jurosMes);
     const multaValor = Number(multa);
     if (!Number.isFinite(juros) || juros < 0 || !Number.isFinite(multaValor) || multaValor < 0) return alert("INFORME JUROS E MULTA VÁLIDOS.");
@@ -8127,7 +8154,7 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose }) {
     const novos = Array.from({ length:qtd }, (_,i) => {
       const d = new Date(base); d.setDate(d.getDate() + i * Number(intervalo || 30));
       const valor = i === qtd - 1 ? Number((total - valorBase * (qtd - 1)).toFixed(2)) : valorBase;
-      return { id:uid("bcli"), vendaId:venda.id, numeroVenda:venda.numeroVenda, cliente:venda.cliente || venda.nomeCliente || "", clienteId:venda.clienteId || "", canal, banco:"ITAÚ", especie:itau.especiePadrao || "DM - DUPLICATA DE VENDA MERCANTIL", parcela:i+1, totalParcelas:qtd, valor, vencimento:d.toISOString().slice(0,10), jurosMes:juros, multa:multaValor, negativacao:false, protestoAutomatico:false, status:"AGUARDANDO EMISSÃO API", alteracaoLiberadaEm:new Date(Date.now()+86400000).toISOString().slice(0,10), envioWhatsapp, envioEmail, incluirNota, envioAutomatico, lembreteDiarioAposVencimento:true, criadoEm:nowISO(), criadoPor:currentUser?.nome || "USUÁRIO" };
+      return { id:uid("bcli"), vendaId:venda.id, vendaIds:venda.vendaIds, numeroVenda:venda.numeroVenda, cliente:venda.cliente || venda.nomeCliente || "", clienteId:venda.clienteId || "", canal, banco:"ITAÚ", especie:itau.especiePadrao || "DM - DUPLICATA DE VENDA MERCANTIL", parcela:i+1, totalParcelas:qtd, valor, vencimento:d.toISOString().slice(0,10), jurosMes:juros, multa:multaValor, negativacao:false, protestoAutomatico:false, status:"AGUARDANDO EMISSÃO API", alteracaoLiberadaEm:new Date(Date.now()+86400000).toISOString().slice(0,10), envioWhatsapp, envioEmail, incluirNota, envioAutomatico, lembreteDiarioAposVencimento:true, criadoEm:nowISO(), criadoPor:currentUser?.nome || "USUÁRIO" };
     });
     onChange((d) => ({ ...d, boletosClientes:[...(d.boletosClientes || []), ...novos], bankEvents:[...(d.bankEvents || []), ...novos.map((b) => ({ id:uid("bankevt"), provedor:"ITAU", tipo:"SOLICITAÇÃO DE EMISSÃO", status:"PENDENTE", numeroVenda:b.numeroVenda, boletoId:b.id, detalhe:`PARCELA ${b.parcela}/${b.totalParcelas} • ${money(b.valor)} • VENC. ${formatDateBR(b.vencimento)}`, criadoEm:nowISO(), usuario:currentUser?.nome || "USUÁRIO" }))] }));
     alert(`${qtd} TÍTULO(S) PREPARADO(S) PARA EMISSÃO ITAÚ. A API SERÁ ACIONADA QUANDO AS CREDENCIAIS FOREM LIBERADAS.`);
@@ -8936,23 +8963,14 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     return true;
   }
   function sugerida(n) {
-    const refs = [...(n.pedidos || []), ...(n.os || [])]
-      .map(norm)
-      .filter(Boolean);
-    return (
-      cargas.find((c) =>
-        refs.some((r) =>
-          [c.numeroPedidoFornecedor, c.numeroOSFornecedor].some(
-            (v) => norm(v) === r,
-          ),
-        ),
-      ) ||
-      cargas.find(
-        (c) =>
-          norm(n.emitente).includes(norm(c.marca)) ||
-          norm(c.marca).includes(norm(n.emitente)),
-      )
-    );
+    // No fallback by supplier name, brand, date or quantity: ambiguity requires manual review.
+    const refs=[...(n.pedidos||[]),...(n.os||[])].map(norm).filter(Boolean);
+    if(!refs.length)return null;
+    const candidates=cargas.filter(c=>c.status!=="CANCELADA"&&refs.some(r=>[c.numeroPedidoFornecedor,c.numeroOSFornecedor].some(v=>v&&norm(v)===r)));
+    if(candidates.length!==1)return null;
+    const carga=candidates[0],fornecedor=(data.fornecedores||[]).find(f=>f.id===carga.fornecedorId);
+    if(!fornecedor?.cnpj||String(fornecedor.cnpj).replace(/\D/g,"")!==String(n.emitenteCnpj||"").replace(/\D/g,""))return null;
+    return carga;
   }
   async function anexarDossie(n, tipo, file) {
     if (!file) return;
@@ -9342,6 +9360,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
         data.unidades?.[0]?.nome ||
         "MONTE CARMELO/MG",
       unidade = "FORTE ATACAREJO — ESTOQUE ÚNICO";
+    if(cargaId&&(data.estoqueMov||[]).some(m=>m.cargaId===cargaId&&String(m.tipo||"").startsWith("ENTRADA")))return alert("ESTA CARGA JÁ POSSUI ENTRADA DE ESTOQUE. CONFIRA A VINCULAÇÃO PARA EVITAR DUPLICIDADE.");
     const movimentos = [];
     const produtosAtualizados = [...(data.produtos || [])];
     const produtosCriados = [];
