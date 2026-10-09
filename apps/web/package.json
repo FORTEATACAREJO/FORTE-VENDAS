@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@forte/core": "0.3.0",
+    "@sentry/react": "^11.6.0",
     "@supabase/supabase-js": "^2.57.4",
     "fast-xml-parser": "^5.2.5",
     "jspdf": "^3.0.2",

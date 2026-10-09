@@ -1,0 +1,50 @@
+name: Qualidade Forte Vendas
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: qualidade-vendas-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verificacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            qa/package-lock.json
+      - run: npm ci
+      - name: Regras, acesso, caixa, pedidos e build
+        run: npm run build
+      - run: npm ci --prefix qa
+      - name: Instalar Chromium de teste
+        working-directory: qa
+        run: npx playwright install --with-deps chromium
+      - name: Pedidos, capacidade, cobranças e monitoramento no navegador
+        shell: bash
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(node --input-type=module -e 'import {chromium} from "./qa/node_modules/playwright/index.mjs";process.stdout.write(chromium.executablePath())')"
+          npm run test:browser
+      - name: Testar persistência e saída da sessão
+        working-directory: qa
+        run: npx playwright test tests/session-sdk.spec.mjs --project='Chrome desktop' --project='Android Chrome'
+      - name: Guardar evidências dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualidade-forte-vendas
+          path: |
+            qa/playwright-report
+            qa/reports
+            qa/test-results
+            /tmp/itau-qa
+          retention-days: 14
