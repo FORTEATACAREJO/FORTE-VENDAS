@@ -1,6 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const port = Number(process.env.PORT || 10000);
 const required = (name) => {
@@ -36,9 +37,24 @@ const encrypt = (payload, password) => {
     ciphertext: ciphertext.toString("base64"),
   };
 };
+const generateCsr = () => {
+  const privateKey = required("ITAU_PRIVATE_KEY");
+  let key;
+  try { key = crypto.createPrivateKey(privateKey); }
+  catch { throw new Error("ITAU_PRIVATE_KEY inválida ou em formato incorreto"); }
+  if (key.asymmetricKeyType !== "rsa") throw new Error("A chave Itaú precisa ser RSA");
+  const { spawnSync } = requireOpenSsl();
+  const subject = process.env.ITAU_CSR_SUBJECT || "/C=BR/O=FORTE ATACAREJO LTDA/CN=49832961000232";
+  const result = spawnSync("openssl", ["req", "-new", "-sha256", "-key", "/dev/stdin", "-subj", subject], {
+    input: privateKey, encoding: "utf8", timeout: 10000, maxBuffer: 100000,
+  });
+  if (result.error || result.status !== 0 || !result.stdout?.includes("-----BEGIN CERTIFICATE REQUEST-----"))
+    throw new Error("Não foi possível gerar CSR no servidor; confira a chave e o OpenSSL");
+  return result.stdout.trim();
+};
 const activateCertificate = async () => {
   const token = required("ITAU_ACTIVATION_TOKEN");
-  const csr = required("ITAU_CSR");
+  const csr = process.env.ITAU_CSR?.trim() || generateCsr();
   const response = await fetch("https://sts.itau.com.br/seguranca/v1/certificado/solicitacao", {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
