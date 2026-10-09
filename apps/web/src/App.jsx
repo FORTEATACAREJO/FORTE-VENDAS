@@ -16,6 +16,8 @@ import FinanceiroHub from "./FinanceiroHub.jsx";
 import VendasDiretasPanel from "./VendasDiretasPanel.jsx";
 import { UnifiedSalesPanel, PurchasesDestinationPanel } from "./WorkflowPanels.jsx";
 import OrdersWorkspace from "./OrdersWorkspace.jsx";
+import PatioConference from "./PatioConference.jsx";
+import {palletQuantity, PALLETS, isResaleProduct} from "../../../supabase/functions/orders-workflow/domain.mjs";
 import SefazAutoSync from "./SefazAutoSync.jsx";
 import CloudHealth from "./CloudHealth.jsx";
 import { CounterSalesPanel, SalesPanel } from "./SalesPanels.jsx";
@@ -3518,7 +3520,7 @@ function pdfTabela(title, headers, rows, file, summary = []) {
 function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const unidades = data.unidades || [],
     clientes = data.clientes || [],
-    produtos = data.produtos || [],
+    produtos = (data.produtos || []).filter(isResaleProduct),
     motoristas = (data.motoristas || []).filter(
       (m) => m.ativo !== false && motoristaServe(m, "ENTREGA"),
     ),
@@ -3526,6 +3528,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const [unidade, setUnidade] = useState(
     unidades?.[1]?.nome || unidades?.[0]?.nome || "",
   );
+  const [tipoAtendimento,setTipoAtendimento] = useState("VENDA");
+  const [showConference,setShowConference] = useState(false);
   const [clienteId, setClienteId] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [qtd, setQtd] = useState("");
@@ -3617,12 +3621,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
     (x) =>
       x.unidade === unidade && x.data === todayISO() && x.status === "ABERTO",
   );
-  const palletsSugeridos = itens.reduce((total, it) => {
-    const prod = produtos.find((x) => x.id === it.produtoId) || {};
-    const nome = upper(`${it.produto || ""} ${prod.nome || ""}`);
-    const porPallet = /EXTRA FORTE|40\s*KG/.test(nome) ? 50 : 40;
-    return total + Math.ceil(Number(it.qtd || 0) / porPallet);
-  }, 0);
+  let palletsSugeridos=0, erroPallets="";
+  try { palletsSugeridos=palletQuantity(data,itens,situacaoPallets==="SEM PALLETS"?PALLETS[1]:PALLETS[0]); }
+  catch(error){erroPallets=error.message;}
+
   const orcamentoCarregado = vendas.find(
     (v) =>
       normalizarNumeroOrcamento(v.numeroOrcamento || v.id) ===
@@ -3630,6 +3632,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       ["ORÇAMENTO", "PARCIALMENTE ATENDIDO"].includes(v.status),
   );
   function validarPallets() {
+    if (erroPallets) return alert(erroPallets);
     if (!situacaoPallets)
       return alert(
         `NÃO É POSSÍVEL GRAVAR. SELECIONE A SITUAÇÃO DOS PALLETS.\n\nSUGESTÃO PARA ESTA OPERAÇÃO: ${palletsSugeridos} PALLET(S).`,
@@ -3991,6 +3994,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const estoqueDisponivel = (pid, ignorarOrcamentoId = "") =>
     Math.max(0, estoqueFisico(pid) - estoqueReservado(pid, ignorarOrcamentoId));
   function validarDisponibilidadeEstoque(itensOperacao, usaReservaId = "") {
+    if(itensOperacao.some(item=>!produtos.some(prod=>prod.id===item.produtoId)))
+      return alert('PRODUTO INATIVO OU NÃO CLASSIFICADO PARA REVENDA. REVISE OS ITENS DA OPERAÇÃO.');
     const totais = itensOperacao.reduce((acc, it) => {
       acc[it.produtoId] = (acc[it.produtoId] || 0) + Number(it.qtd || 0);
       return acc;
@@ -5203,6 +5208,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         "VENDA BLOQUEADA: SOMENTE VENDAS DO CAIXA DO DIA AINDA ABERTO PODEM SER EDITADAS.",
       );
     setEditVendaId(v.id);
+    setTipoAtendimento("VENDA");
     setUnidade(v.unidade || unidade);
     setClienteId(v.clienteId || "");
     setItens((v.itens || []).map((x) => ({ ...x })));
@@ -5529,6 +5535,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         </div>
       </div>
       <div className="transportBox">
+        <Field label="1. TIPO DE ATENDIMENTO">
+          <select value={tipoAtendimento} onChange={e=>setTipoAtendimento(e.target.value)} disabled={!!editVendaId}>
+            <option value="VENDA">VENDA</option><option value="ORCAMENTO">ORÇAMENTO</option>
+          </select>
+        </Field>
+      </div>
+      <div className="transportBox">
         <h3>CAIXA BALCÃO</h3>
         <div className="miniGrid">
           <Field label="DESTINO PARA CONSULTA (SALDO SEMPRE CONSOLIDADO)">
@@ -5562,12 +5575,16 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
               <button className="secondary" onClick={conferirCaixa}>
                 CONFERIR CAIXA
               </button>
+              <button className="secondary" onClick={()=>setShowConference(value=>!value)}>
+                CONFERIR ESTOQUE / PÁTIO
+              </button>
               <button className="dangerBtn" onClick={fecharCaixa}>
                 FECHAR CAIXA
               </button>
             </>
           )}
         </div>
+        {showConference&&caixaAberto&&<PatioConference key={caixaAberto.id} caixaId={caixaAberto.id}/>}
         {fechados.slice(0, 8).map((cx) => (
           <div className="financialRow" key={cx.id}>
             <b>{formatDateBR(cx.data)}</b>
@@ -5877,10 +5894,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       </div>
       <div className="transportBox palletDecisionV49">
         <h3>PALLETS — PREENCHIMENTO OBRIGATÓRIO</h3>
+        {erroPallets&&<p role="alert" className="alert warning">{erroPallets}</p>}
         <p>
           PARA ESTA QUANTIDADE, O SISTEMA SUGERE{" "}
-          <b>{palletsSugeridos} PALLET(S)</b>. CP2 50 KG: 40 SACOS/PALLET •
-          EXTRA FORTE/40 KG: 50 SACOS/PALLET.
+          <b>{palletsSugeridos} PALLET(S)</b>, conforme a quantidade por pallet cadastrada em cada produto.
         </p>
         <div className="miniGrid">
           <Field label="SITUAÇÃO DOS PALLETS">
@@ -6008,12 +6025,11 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                   GERAR RECIBO DE FRETE / PIX
                 </button>
               )}
-              <button className="secondary" onClick={() => salvar("ORÇAMENTO")}>
+              {tipoAtendimento==="ORCAMENTO" ? <button onClick={() => salvar("ORÇAMENTO")}>
                 GERAR ORÇAMENTO
-              </button>
-              <button onClick={() => salvar("CONCLUÍDA")}>
+              </button> : <button onClick={() => salvar("CONCLUÍDA")}>
                 GERAR / CONCLUIR VENDA
-              </button>
+              </button>}
             </div>
           </div>
         </>
@@ -10782,6 +10798,7 @@ const META = {
       ["margemSugerida", "MARGEM SUGERIDA %", "number"],
       ["precoTabela", "PREÇO DE TABELA R$", "number"],
       ["precoNegociado", "PREÇO NEGOCIADO R$", "number"],
+      ["freteBalcaoPorSaco", "FRETE DE ENTREGA POR UNIDADE R$", "number"],
       ["palletQtd", "QUANTIDADE POR PALLET", "number"],
       ["modalidade", "MODALIDADE CIF/FOB"],
       ["ultimaAtualizacaoCusto", "DATA ÚLTIMA ATUALIZAÇÃO"],

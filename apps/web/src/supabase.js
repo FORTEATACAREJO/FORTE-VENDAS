@@ -16,6 +16,20 @@ export async function getPatioStatus(caixaId){
  const {data,error}=await supabase.rpc('fc_patio_status',{p_caixa:caixaId});
  if(error)throw new Error(error.message||'Não foi possível conferir o pátio.');return data;
 }
+export async function confirmConferencePassword(password){
+ if(!supabase)throw new Error('Conferência exige conexão com o sistema.');
+ const {data:{user},error}=await supabase.auth.getUser();
+ if(error||!user?.email)throw new Error('Entre novamente no sistema para conferir.');
+ const verifier=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+ const result=await verifier.auth.signInWithPassword({email:user.email,password});
+ if(result.error||result.data.user?.id!==user.id)throw new Error('Senha não confirmada. Informe a senha do usuário conectado.');
+ await verifier.auth.signOut({scope:'local'});
+}
+export async function savePatioCount(caixaId,item,count){
+ if(!supabase)throw new Error('Conferência exige conexão com o sistema.');
+ const {data,error}=await supabase.rpc('fc_patio_contar',{p_caixa:caixaId,p_produto:item.produtoId,p_contagem:count,p_base:item.base});
+ if(error)throw new Error(error.message||'Não foi possível gravar a contagem.');return data;
+}
 export async function commitCashClosure(estado,snapshot){
  if(!supabase)throw new Error('Fechamento exige conexão e confirmação no servidor.');
  await saveCloudState(estado);

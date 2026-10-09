@@ -1,12 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {applyWorkflow,supplierProducts,documentStatus} from '../supabase/functions/orders-workflow/domain.mjs';
+import {applyWorkflow,supplierProducts,documentStatus,isResaleProduct} from '../supabase/functions/orders-workflow/domain.mjs';
 const p={user_id:'actor',empresa_id:'e',nome:'Admin',perfil:'MASTER',ativo:true,status_aprovacao:'APROVADO'};
 const base=()=>({settings:{},unidades:[{id:'u',nome:'Filial'}],fornecedores:[{id:'f',nome:'CSN',condicaoPagamento:'14 DIAS'},{id:'g',nome:'CIPLAN',condicaoPagamento:'14 DIAS'}],produtos:[{id:'p',nome:'Cimento CSN',marca:'CSN',pesoKg:50,precoNegociado:22,palletQtd:50,precoTabela:34},{id:'q',nome:'Ciplan',marca:'CIPLAN',pesoKg:50,precoNegociado:22,palletQtd:50,precoTabela:34}],locais:[{id:'l',nome:'Arcos',ativo:true}],custosFornecedor:[{fornecedorId:'f',produtoId:'p',condicaoPagamento:'14 DIAS',custoUnitario:22}],motoristas:[{id:'m',nome:'Motorista',placa1:'ABC1D23',capacidadeMaximaKg:40000}],usuarios:[{id:'v',nome:'Vendedor'}],clientes:[{id:'c',nome:'Cliente',limiteCredito:100000}],cargas:[],vendas:[],documentos:[]});
 const supplier={action:'SUPPLIER_CREATE',fornecedorId:'f',unidadeId:'u',pagamento:'14 DIAS',motoristaId:'m',itens:[{produtoId:'p',qtd:800}],regraPallets:'Sem pallets',palletQuantidade:0,origem:'Arcos',destino:'Galpão',destinoTipo:'GALPÃO',modalidadeFrete:'FOB'};
 let seq=0;const execute=(s,b,actor=p)=>applyWorkflow(s,{...b,requestId:b.requestId||'r'+(++seq)},actor,{id:'id'+seq,at:'2026-10-09T02:00:00Z'});
 function confirmed(){let o=execute(base(),supplier),s=o.state;const id=s.comprasFornecedor[0].id;s=execute(s,{action:'OFFICIAL_CONFIRM',id,numeroPedidoFornecedor:'123',evidencia:'Pedido portal 123'}).state;return s;}
 test('fornecedor só exibe produtos vinculados, nunca de outra marca',()=>assert.deepEqual(supplierProducts(base(),'f').map(p=>p.id),['p']));
+test('finalidade, classificação, inatividade e revenda falsa bloqueiam compra e venda comercial',()=>{
+ for(const patch of [{finalidade:'USO E CONSUMO'},{purpose:'IMOBILIZADO'},{classificacao:'USO E CONSUMO'},{destinacao:'IMOBILIZADO'},{ativo:false},{revenda:false}]){
+  const s=base();Object.assign(s.produtos[0],patch);assert.equal(isResaleProduct(s.produtos[0]),false);assert.deepEqual(supplierProducts(s,'f'),[]);assert.throws(()=>execute(s,supplier),/não vinculado/);assert.throws(()=>execute(s,sale),/não classificado|inativo/);
+ }
+ assert.equal(isResaleProduct(null),false);assert.equal(isResaleProduct({nome:'Cimento'}),true);
+});
 test('rascunho não afirma envio e não cria carga; retorno oficial cria uma linha única',()=>{let s=execute(base(),supplier).state;assert.equal(s.cargas.length,0);assert.match(s.comprasFornecedor[0].status,/NÃO ENVIADO/);const b={action:'OFFICIAL_CONFIRM',id:s.comprasFornecedor[0].id,numeroPedidoFornecedor:'123',evidencia:'PDF'};s=execute(s,b).state;const loadId=s.cargas[0].id;s=execute(s,b).state;assert.equal(s.cargas.length,1);assert.equal(s.cargas[0].id,loadId);});
 test('reenvio idempotente retorna mesmo resultado, mas reutilização com payload diferente bloqueia',()=>{const b={...supplier,requestId:'retry'};const out=execute(base(),b);const again=execute(out.state,b);assert(again.replayed);assert.equal(again.state.comprasFornecedor.length,1);assert.throws(()=>execute(out.state,{...b,destino:'Outro'}),/outra operação/);});
 test('produto incompatível, excesso de peso e custo alterado sem permissão bloqueiam',()=>{assert.throws(()=>execute(base(),{...supplier,itens:[{produtoId:'q',qtd:1}]}),/não vinculado/);assert.throws(()=>execute(base(),{...supplier,itens:[{produtoId:'p',qtd:801}]}),/capacidade/);assert.throws(()=>execute(base(),{...supplier,itens:[{produtoId:'p',qtd:800,custoUnitario:23}]},{...p,perfil:'VENDEDOR_INTERNO'}),/Preço negociado mudou/);});
