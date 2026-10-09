@@ -54,14 +54,30 @@ const generateCsr = () => {
 const activateCertificate = async () => {
   const token = required("ITAU_ACTIVATION_TOKEN").replace(/\s+/g, "");
   if (!token || /[^\x21-\x7e]/.test(token)) throw new Error("Token de ativação inválido; confira o valor no Render");
-  const csr = process.env.ITAU_CSR?.trim() || generateCsr();
-  const response = await fetch("https://sts.itau.com.br/seguranca/v1/certificado/solicitacao", {
+  const csr = process.env.ITAU_CSR?.replaceAll("\\n", "\n").trim() || generateCsr();
+  if (!csr.includes("-----BEGIN CERTIFICATE REQUEST-----") || !csr.includes("-----END CERTIFICATE REQUEST-----")) {
+    throw Object.assign(new Error("CSR inválido"), { stage: "csr_validation", safeCode: "CSR_INVALID" });
+  }
+  const privateKey = crypto.createPrivateKey(required("ITAU_PRIVATE_KEY"));
+  const csrPublic = spawnSync("openssl", ["req", "-pubkey", "-noout"], { input: csr, encoding: "utf8", timeout: 10000 });
+  if (csrPublic.status !== 0 || !csrPublic.stdout) {
+    throw Object.assign(new Error("CSR não verificável"), { stage: "csr_validation", safeCode: "CSR_INVALID" });
+  }
+  const actualPublic = crypto.createPublicKey(privateKey).export({ type: "spki", format: "pem" });
+  const suppliedPublic = crypto.createPublicKey(csrPublic.stdout).export({ type: "spki", format: "pem" });
+  if (actualPublic !== suppliedPublic) {
+    throw Object.assign(new Error("CSR e chave privada não correspondem"), { stage: "csr_validation", safeCode: "CSR_KEY_MISMATCH" });
+  }
+  let response;
+  try { response = await fetch("https://sts.itau.com.br/seguranca/v1/certificado/solicitacao", {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "text/plain" },
     body: csr,
-  });
+  }); } catch (error) {
+    throw Object.assign(new Error("Falha de transporte ao Itaú"), { stage: "bank_transport", safeCode: "BANK_TRANSPORT_ERROR" });
+  }
   const text = await response.text();
-  if (!response.ok) throw new Error(`Itaú recusou a ativação (${response.status}).`);
+  if (!response.ok) throw Object.assign(new Error("Itaú recusou a ativação"), { stage: "bank_response", safeCode: "BANK_HTTP_" + response.status });
   const begin = text.indexOf("-----BEGIN CERTIFICATE-----");
   if (begin < 1) throw new Error("Retorno do Itaú sem certificado reconhecível.");
   const clientSecret = text.slice(0, begin).trim().split(/\s+/).at(-1);
@@ -115,7 +131,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 404, { error: "Não encontrado" });
   } catch (error) {
     // Never print raw third-party error messages: they may contain bearer tokens or private data.
-    console.error("Falha na requisição", { name: error?.name || "Error", code: error?.code || error?.cause?.code || "INTEGRATION_ERROR" });
+    console.error("Falha na requisição", { stage: error?.stage || "server", code: error?.safeCode || "INTEGRATION_ERROR" });
     return send(res, 500, { error: "Falha segura na integração Itaú" });
   }
 });
