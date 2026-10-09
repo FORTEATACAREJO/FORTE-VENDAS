@@ -11392,7 +11392,7 @@ function CadModal({
           + NOVO
         </button>
       </div>
-      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>OUTROS</option></select></div>}
+      {type === "produtos" && <div className="cadToolbar"><select value={filtroFinalidade} onChange={(e)=>setFiltroFinalidade(e.target.value)}><option>TODOS</option><option>REVENDA</option><option>USO E CONSUMO</option><option>IMOBILIZADO</option></select><select value={filtroCategoria} onChange={(e)=>setFiltroCategoria(e.target.value)}><option>TODAS</option><option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option></select></div>}
       {edit && (
         <div className="editBox">
           <DossieBox
@@ -11422,7 +11422,7 @@ function CadModal({
                   </select>
                 ) : type === "produtos" && k === "categoria" ? (
                   <select value={f[k] || "CIMENTO"} onChange={(e)=>setF((x)=>({...x,[k]:e.target.value}))}>
-                    <option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option>
+                    <option>CIMENTO</option><option>ARGAMASSA</option><option>CAL</option><option>REJUNTE</option><option>ADITIVOS</option><option>IMPERMEABILIZANTE</option><option>OUTROS</option>
                   </select>
                 ) : type === "motoristas" && k === "tipoMotorista" ? (
                   <select
