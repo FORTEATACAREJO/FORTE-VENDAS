@@ -43,7 +43,6 @@ const generateCsr = () => {
   try { key = crypto.createPrivateKey(privateKey); }
   catch { throw new Error("ITAU_PRIVATE_KEY inválida ou em formato incorreto"); }
   if (key.asymmetricKeyType !== "rsa") throw new Error("A chave Itaú precisa ser RSA");
-  const { spawnSync } = requireOpenSsl();
   const subject = process.env.ITAU_CSR_SUBJECT || "/C=BR/O=FORTE ATACAREJO LTDA/CN=49832961000232";
   const result = spawnSync("openssl", ["req", "-new", "-sha256", "-key", "/dev/stdin", "-subj", subject], {
     input: privateKey, encoding: "utf8", timeout: 10000, maxBuffer: 100000,
