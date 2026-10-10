@@ -547,7 +547,7 @@ const CARGOS = [
   "CONSULTA",
 ];
 const MODULES = [
-  ["painelUnicoVendas", "0", "PAINEL DE TODAS AS VENDAS", "Entrada central de todas as vendas e roteamento autorizado para Balcão ou Carga Direta."],
+  ["painelUnicoVendas", "0", "PAINEL DE PEDIDOS DE VENDA", "Entrada central de todas as vendas e roteamento autorizado para Balcão ou Carga Direta."],
   ["clientes", "1", "CARGA DIRETA", "Venda/carga direta com destino definido."],
   ["diretas", "1A", "PAINEL VENDAS DIRETAS", "Nota fiscal, documentos e distribuição por cliente."],
   ["balcao", "2", "VENDA BALCÃO", "Vendas no balcão, entrega, frete e caixa."],
@@ -631,6 +631,7 @@ const MODULES = [
   ],
   ["comprasFornecedor", "15A", "PEDIDOS E CARREGAMENTO", "Pedido ao fornecedor, venda interna e ordem independente."],
   ["painelCompras", "15B", "PAINEL DE COMPRAS", "NF-e SEFAZ, CNPJ, estoque fiscal e destinação."],
+  ["painelCargas", "15D", "PAINEL DE CARGAS", "Pedido, motorista, vendas, notas e pagamentos na mesma carga."],
   ["ordensCarregamento", "15C", "ORDENS DE CARREGAMENTO", "Operação sem informações financeiras."],
   [
     "planejamento",
@@ -660,6 +661,7 @@ const MODULE_GROUPS = [
       "comprasFornecedor",
       "painelCompras",
       "ordensCarregamento",
+      "painelCargas",
       "planejamento",
       "todasCargas",
     ],
@@ -3128,10 +3130,12 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
+        {tab === "painelUnicoVendas" && <button className="secondary" onClick={()=>{setWorkflowInitialTab("venda");setTab("comprasFornecedor");}}>Ajustar pedidos, relatórios e avisos ao cliente</button>}
         {tab === "painelUnicoVendas" && <UnifiedSalesPanel data={data} onChange={setData} currentUser={currentUser} canRoute={canAccessTab("painelUnicoVendas", "editar")} onNavigate={id=>{if(id==="clientes"){setWorkflowInitialTab("venda");setTab("comprasFornecedor");}else setTab(id);}} />}
-        {tab === "comprasFornecedor" && <OrdersWorkspace initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
+        {tab === "comprasFornecedor" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "ordensCarregamento" && <OrdersWorkspace data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
+        {tab === "painelCargas" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="cargas" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
+        {tab === "ordensCarregamento" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
             data={data}

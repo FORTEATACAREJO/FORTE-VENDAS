@@ -143,7 +143,7 @@ const setupPage = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta
 const server = http.createServer(async (req, res) => {
   try {
     const requestUrl = new URL(req.url, "https://forte-itau-api.onrender.com");
-    if (requestUrl.pathname === "/webhooks/whatsapp" && req.method === "GET") {
+    if (["/webhook", "/webhooks/whatsapp"].includes(requestUrl.pathname) && req.method === "GET") {
       const mode = requestUrl.searchParams.get("hub.mode");
       const token = requestUrl.searchParams.get("hub.verify_token");
       const challenge = requestUrl.searchParams.get("hub.challenge");
@@ -152,12 +152,16 @@ const server = http.createServer(async (req, res) => {
       }
       return send(res, 403, { error: "Falha na verificação do webhook" });
     }
-    if (requestUrl.pathname === "/webhooks/whatsapp" && req.method === "POST") {
+    if (["/webhook", "/webhooks/whatsapp"].includes(requestUrl.pathname) && req.method === "POST") {
       const raw = await readBody(req);
-      let payload = {};
-      try { payload = raw ? JSON.parse(raw) : {}; } catch {}
-      console.log("WhatsApp webhook recebido", JSON.stringify(payload));
-      return send(res, 200, "EVENT_RECEIVED", "text/plain; charset=utf-8");
+      const endpoints = ['https://xmfpvvmvdkepmnvtdoio.supabase.co/functions/v1/whatsapp-fiscal/webhook'];
+      if (process.env.WHATSAPP_VENDAS_WEBHOOK_ENABLED === 'true') endpoints.push('https://gtwecfyffjszghnvtlzr.supabase.co/functions/v1/order-communications/webhook');
+      const responses = await Promise.all(endpoints.map(url => fetch(url, {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'x-hub-signature-256': String(req.headers['x-hub-signature-256'] || '')},
+        body: raw, signal: AbortSignal.timeout(20000)
+      })));
+      if (responses.some(r => !r.ok)) return send(res, 502, {error: 'Retorno ainda não confirmado pelas integrações.'});
+      return send(res, 200, 'EVENT_RECEIVED', 'text/plain; charset=utf-8');
     }
     if (req.method === "GET" && req.url === "/health") {
       const configured = Boolean(process.env.ITAU_CLIENT_ID && process.env.ITAU_CLIENT_SECRET && process.env.ITAU_CERTIFICATE && process.env.ITAU_PRIVATE_KEY);

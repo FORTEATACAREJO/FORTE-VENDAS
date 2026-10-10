@@ -37,11 +37,14 @@ Deno.serve(async(req)=>{
   if(b.action==='PUBLISH_FRETE'){const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
   const out=applyWorkflow(row.estado,b,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
   if(!out.replayed){const {error}=await client.rpc('fc_salvar_estado',{p_estado:out.state,p_versao:row.versao});if(error){if(error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
-  let warning;
+  let warning=out.result.warning;
   if(b.action==='DOCUMENT_VALIDATE'){
     const doc=(out.state.documentos||[]).find(d=>d.id===b.documentoId);
     const load=(out.state.cargas||[]).find(c=>c.id===b.cargaId);
     if(doc?.categoria==='COMPROVANTE FRETE'&&load?.fretePublicadaId){try{await freteBridge('PUBLISH',b.cargaId);}catch(e){warning='Documento validado. A sincronização do comprovante com o Forte Frete ficou pendente: '+e.message;}}
+  }
+  if(!out.replayed&&['SUPPLIER_SEND','SALE_CREATE','SALE_ADJUST','LOADING_SAVE','SALE_LINK','LOAD_FINALIZE'].includes(b.action)&&typeof EdgeRuntime!=='undefined'){
+    EdgeRuntime.waitUntil(fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/order-communications',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:JSON.stringify({action:'DISPATCH'}),signal:AbortSignal.timeout(55000)}).catch(()=>{}));
   }
   return Response.json({ok:true,...out.result,replayed:!!out.replayed,warning},{headers:cors});
  }catch(error){return Response.json({error:String(error.message||error)},{status:400,headers:cors});}
