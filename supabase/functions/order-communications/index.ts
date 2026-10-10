@@ -1,0 +1,47 @@
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import {jsPDF} from 'npm:jspdf@3.0.2';
+import {templatePayload,validSignature,applyStatuses} from './provider.mjs';
+import {linkedReturn,deliveryReply,phone} from '../orders-workflow/communications.mjs';
+const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Content-Type':'application/json'};
+const env=(key:string)=>Deno.env.get(key)||'';
+const admin=()=>createClient(env('SUPABASE_URL'),env('SUPABASE_SERVICE_ROLE_KEY'));
+async function rowFor(db:any,empresa:string){const {data,error}=await db.from('fc_app_state').select('estado,versao').eq('empresa_id',empresa).single();if(error||!data)throw new Error('Base indisponível.');return data;}
+async function persist(db:any,empresa:string,row:any){const {data,error}=await db.from('fc_app_state').update({estado:row.estado,versao:row.versao+1}).eq('empresa_id',empresa).eq('versao',row.versao).select('versao');if(error||data?.length!==1)throw new Error('Conflito de versão; atualize os dados.');row.versao++;}
+function supplierPDF(j:any){const d=new jsPDF();let y=20;const line=(s:string)=>{const lines=d.splitTextToSize(s,180);for(const t of lines){if(y>275){d.addPage();y=20;}d.text(t,15,y);y+=6;}};d.setFillColor(22,42,58);d.rect(0,0,210,34,'F');d.setTextColor(255);d.setFontSize(14);d.text('FORTE ATACAREJO',15,14);d.setFontSize(10);d.text('PEDIDO '+j.reference,15,24);d.setFillColor(228,111,30);d.rect(0,34,210,2,'F');d.setTextColor(22,42,58);y=45;d.setFontSize(10);const o=j.order;line('Fornecedor: '+o.fornecedor+' • Unidade: '+o.unidade);line('Origem: '+o.origem+' • Destino: '+o.destino);line('Motorista: '+(o.motorista||'A definir')+' • '+o.placas.join(' / '));line('Pagamento: '+o.pagamento+' • '+o.modalidadeFrete+' • '+o.regraPallets+' • '+o.palletQuantidade);for(const i of o.itens)line(i.qtd+' • '+i.produto+' • Unitário R$ '+Number(i.custoUnitario).toFixed(2)+' • Total R$ '+Number(i.total).toFixed(2));line('Referência interna: '+o.id);line('Contato: (34) 99920-9335');return new Uint8Array(d.output('arraybuffer'));}
+async function sendJob(j:any){
+ if(j.canal==='EMAIL'){
+  const key=env('RESEND_API_KEY'),from=env('ORDERS_EMAIL_FROM');if(!key||!from)throw new Error('E-MAIL DE ENVIO NÃO CONFIGURADO');
+  const bytes=supplierPDF(j);const content=btoa(Array.from(bytes).map(n=>String.fromCharCode(n)).join(''));
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json','Idempotency-Key':j.id},body:JSON.stringify({from,to:[j.to],subject:'Pedido '+j.reference,text:j.message,attachments:[{filename:j.reference+'.pdf',content}]}),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('PROVEDOR DE E-MAIL RECUSOU O ENVIO ('+r.status+')');const out=await r.json();if(!out.id)throw new Error('RESULTADO INCERTO');return out.id;
+ }
+ const token=env('WHATSAPP_ACCESS_TOKEN'),number=env('WHATSAPP_PHONE_ID'),name=env('WHATSAPP_TEMPLATE_'+j.kind);if(!token||!number||!name)throw new Error('WHATSAPP OU MODELO APROVADO NÃO CONFIGURADO');
+ const base='https://graph.facebook.com/'+(env('WHATSAPP_GRAPH_VERSION')||'v24.0')+'/'+number;
+ let documentId;
+ if(j.audience==='FORNECEDOR'){const form=new FormData();form.set('messaging_product','whatsapp');form.set('file',new Blob([supplierPDF(j)],{type:'application/pdf'}),j.reference+'.pdf');const uploaded=await fetch(base+'/media',{method:'POST',headers:{Authorization:'Bearer '+token},body:form,signal:AbortSignal.timeout(20000)});if(!uploaded.ok)throw new Error('PDF RECUSADO PELO WHATSAPP');documentId=(await uploaded.json()).id;if(!documentId)throw new Error('PDF SEM IDENTIFICAÇÃO');}
+ const r=await fetch(base+'/messages',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(templatePayload(j,name,documentId)),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error('PROVEDOR WHATSAPP RECUSOU O ENVIO ('+r.status+')');const out=await r.json();const id=out.messages?.[0]?.id;if(!id)throw new Error('RESULTADO INCERTO');return id;
+}
+Deno.serve(async req=>{
+ if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
+ try{
+  const isWebhook=new URL(req.url).pathname.endsWith('/webhook');
+  if(isWebhook){
+   const tenant=env('WHATSAPP_TENANT_ID'),url=new URL(req.url);if(req.method==='GET'){if(env('WHATSAPP_VERIFY_TOKEN')&&url.searchParams.get('hub.mode')==='subscribe'&&url.searchParams.get('hub.verify_token')===env('WHATSAPP_VERIFY_TOKEN'))return new Response(url.searchParams.get('hub.challenge')||'');return new Response('Forbidden',{status:403});}
+   if(req.method!=='POST'||!tenant)return new Response('Not configured',{status:503});const raw=await req.text();if(raw.length>1000000)return new Response('Too large',{status:413});if(!await validSignature(raw,req.headers.get('x-hub-signature-256'),env('WHATSAPP_APP_SECRET')))return new Response('Forbidden',{status:403});
+   const payload=JSON.parse(raw),db=admin();for(let attempt=0;attempt<3;attempt++){const row=await rowFor(db,tenant),s=row.estado;for(const entry of payload.entry||[])for(const change of entry.changes||[]){const v=change.value||{};if(String(v.metadata?.phone_number_id)!==env('WHATSAPP_PHONE_ID'))continue;applyStatuses(s,v.statuses);for(const m of v.messages||[]){const at=new Date(Number(m.timestamp)*1000).toISOString();const args={id:m.id,from:m.from,contextId:m.context?.id,payload:m.button?.payload||m.interactive?.button_reply?.id,at};if(args.payload){const accepted=deliveryReply(s,args);if(!accepted&&!(s.retornosCliente||[]).some((r:any)=>r.providerId===m.id)&&!(s.comunicacoes||[]).some((j:any)=>j.reply?.providerId===m.id)){s.retornosCliente=[...(s.retornosCliente||[]),{providerId:m.id,contextId:m.context?.id,from:phone(m.from),payload:args.payload,at,state:'CONFERIR'}];}}else if(m.text?.body&&(s.fornecedores||[]).some((f:any)=>phone(f.whatsapp||f.telefone)===phone(m.from)))linkedReturn(s,{...args,providerId:m.id,text:m.text.body});}}
+    try{await persist(db,tenant,row);return new Response('EVENT_RECEIVED');}catch(e){if(attempt===2)throw e;}}
+  }
+  if(req.method!=='POST')return Response.json({error:'Método inválido'},{status:405,headers:cors});
+  const client=createClient(env('SUPABASE_URL'),env('SUPABASE_ANON_KEY'),{global:{headers:{Authorization:req.headers.get('Authorization')||''}}});const {data:{user},error}=await client.auth.getUser();if(error||!user)return Response.json({error:'Entre no sistema.'},{status:401,headers:cors});
+  const {data:p}=await client.from('fc_perfis').select('*').eq('user_id',user.id).single();if(!p?.ativo||p.trocar_senha||p.status_aprovacao!=='APROVADO'||!['MASTER','ADMINISTRADOR','OPERADOR_GERAL','VENDEDOR_INTERNO'].includes(p.perfil)||!['MASTER','ADMINISTRADOR'].includes(p.perfil)&&p.permissoes?.vendas!==true&&p.permissoes?.['carga-direta']!==true&&p.permissoes?.['VENDAS E COMPRAS']?.editar!==true)return Response.json({error:'Sem permissão.'},{status:403,headers:cors});
+  const body=await req.json();if(body.action!=='DISPATCH')throw new Error('Ação inválida.');if(p.empresa_id!==env('WHATSAPP_TENANT_ID'))return Response.json({error:'Integração de mensagens ainda não configurada para esta empresa.'},{status:409,headers:cors});
+  const db=admin();let sent=0,blocked=0;const initial=await rowFor(db,p.empresa_id);const ids=(initial.estado.comunicacoes||[]).filter((j:any)=>j.state==='QUEUED'||j.state==='BLOCKED'&&j.reason==='INTEGRAÇÃO NÃO CONFIGURADA').slice(0,10).map((j:any)=>j.id);
+  for(const id of ids){const row=await rowFor(db,p.empresa_id),j=row.estado.comunicacoes.find((j:any)=>j.id===id);if(!j||!['QUEUED','BLOCKED'].includes(j.state))continue;const customer=row.estado.clientes?.find((c:any)=>c.id===j.clienteId);if(j.audience==='CLIENTE'&&customer?.whatsappAutorizado!==true){j.state='BLOCKED';j.reason='AUTORIZAÇÃO DO CLIENTE PENDENTE';await persist(db,p.empresa_id,row);blocked++;continue;}
+   const configured=j.canal==='EMAIL'?env('RESEND_API_KEY')&&env('ORDERS_EMAIL_FROM'):env('WHATSAPP_ACCESS_TOKEN')&&env('WHATSAPP_PHONE_ID')&&env('WHATSAPP_TEMPLATE_'+j.kind);if(!configured){j.state='BLOCKED';j.reason='INTEGRAÇÃO NÃO CONFIGURADA';await persist(db,p.empresa_id,row);blocked++;continue;}
+   j.state='SENDING';j.attemptAt=new Date().toISOString();await persist(db,p.empresa_id,row);let providerId='',failure='';try{providerId=await sendJob(j);}catch(e){failure=e.message;}
+   // Claim before contacting the provider; a timeout or interrupted invocation is never retried automatically.
+   for(let attempt=0;attempt<3;attempt++){const latest=await rowFor(db,p.empresa_id),current=latest.estado.comunicacoes.find((x:any)=>x.id===id);if(!current||current.state!=='SENDING')break;current.state=providerId?'SENT':'UNCERTAIN';current.providerId=providerId;current.reason=failure;current.sentAt=providerId?new Date().toISOString():null;if(providerId&&current.audience==='FORNECEDOR'){const o=latest.estado.comprasFornecedor.find((x:any)=>x.id===current.compraFornecedorId);if(o){o.status='AGUARDANDO RETORNO DO FORNECEDOR';o.envioAceitoEm=current.sentAt;}}
+    try{await persist(db,p.empresa_id,latest);if(providerId)sent++;break;}catch(e){if(attempt===2)throw e;}}
+  }
+  return Response.json({message:sent+' envio(s) aceito(s) pelo provedor; '+blocked+' bloqueado(s).',sent,blocked},{headers:cors});
+ }catch(e){return Response.json({error:e.message||'Operação não concluída.'},{status:400,headers:cors});}
+});
