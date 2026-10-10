@@ -1,0 +1,7 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {purchaseReport} from '../apps/web/src/orders-reports.js';
+const order={id:'o',numero:'COMP-000001',fornecedor:'CSN',unidade:'Forte',origem:'Arcos',destino:'Obra',motorista:'João',motoristaSnapshot:{cpf:'123',cnhNumero:'CNH123',rntrc:'RNTRC1',proprietario:'Transportadora'},placas:['ABC1D23'],modalidadeCompra:'CSN_DIRETO',pagamento:'14 DIAS',modalidadeFrete:'FOB',regraPallets:'Com pallets',palletQuantidade:20,pesoKg:40000,fretePorTon:140,freteValor:5600,itens:[{produto:'Cimento CSN',qtd:800,pesoKg:40000,custoUnitario:22,total:17600}]};
+const details={allowDriverPayment:true,payment:{favorecido:'PAGADOR_TESTE',chavePix:'PIX_PRIVADO_TESTE'}};
+test('PDF do fornecedor nunca mostra frete contratado nem Pix mesmo com dados privados disponíveis',()=>{const out=purchaseReport(order,false,details).output();assert(!out.includes('PIX_PRIVADO_TESTE'));assert(!out.includes('PAGADOR_TESTE'));assert(!out.includes('Total do frete'));assert(out.includes('RNTRC1'));assert(out.includes('CSN_DIRETO'));});
+test('PDF do motorista mostra pagamento somente com autorização do servidor e não mostra preço da compra',()=>{const authorized=purchaseReport(order,true,details).output();assert(authorized.includes('PIX_PRIVADO_TESTE'));assert(authorized.includes('Total do frete'));assert(!authorized.includes('Total da compra'));const denied=purchaseReport(order,true,{...details,allowDriverPayment:false}).output();assert(!denied.includes('PIX_PRIVADO_TESTE'));assert(!denied.includes('Total do frete'));});

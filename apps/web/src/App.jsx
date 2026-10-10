@@ -10802,6 +10802,8 @@ const META = {
       ["margemSugerida", "MARGEM SUGERIDA %", "number"],
       ["precoTabela", "PREÇO DE TABELA R$", "number"],
       ["precoNegociado", "PREÇO NEGOCIADO R$", "number"],
+      ["precoNegociadoCsnDireto", "PREÇO NEGOCIADO CSN DIRETO R$", "number"],
+      ["precoNegociadoCsnFibra", "PREÇO NEGOCIADO CSN FIBRA R$", "number"],
       ["freteBalcaoPorSaco", "FRETE DE ENTREGA POR UNIDADE R$", "number"],
       ["palletQtd", "QUANTIDADE POR PALLET", "number"],
       ["modalidade", "MODALIDADE CIF/FOB"],

@@ -11,7 +11,7 @@
     "sefaz": "node services/sefaz-local.mjs",
     "build": "npm run test:core && npm run test:rules && npm --workspace apps/web run build",
     "preview": "npm --workspace apps/web run preview",
-    "test:core": "node --test checks/customer-name.test.mjs checks/orders-workflow.test.mjs checks/order-communications.test.mjs checks/orders-edge.test.cjs checks/itau-report.test.mjs checks/monitoring.test.mjs tests/cloud-state-simulation.mjs tests/access-standard/login-edge.test.mjs tests/access-standard/profiles.test.mjs tests/access-standard/role-approval.test.mjs tests/access-standard/edge-tests.mjs checks/itau-integration.test.mjs",
+    "test:core": "node --test checks/customer-name.test.mjs checks/orders-workflow.test.mjs checks/order-communications.test.mjs checks/orders-edge.test.cjs checks/orders-reports.test.mjs checks/frete-bridge.test.cjs checks/itau-report.test.mjs checks/monitoring.test.mjs tests/cloud-state-simulation.mjs tests/access-standard/login-edge.test.mjs tests/access-standard/profiles.test.mjs tests/access-standard/role-approval.test.mjs tests/access-standard/edge-tests.mjs checks/itau-integration.test.mjs",
     "test:rules": "node tests/current-account-simulation.cjs && node tests/numeric-regression.cjs && node checks/mobile-carga-direta.test.cjs",
     "test:browser": "node checks/orders-workspace.browser.mjs && node checks/itau-report.browser.mjs && node checks/monitoring.browser.mjs"
   },

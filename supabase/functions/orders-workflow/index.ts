@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { applyWorkflow } from './domain.mjs';
+import { palletReleaseNeeded,mayReadDriverPayment } from './complements.mjs';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Content-Type':'application/json'};
 Deno.serve(async(req)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -28,13 +29,14 @@ Deno.serve(async(req)=>{
    const result=await response.json(),output=result.output_text||result.output?.flatMap((x:any)=>x.content||[]).find((x:any)=>x.type==='output_text')?.text||'';const fields=JSON.parse(output.replace(/^```(?:json)?\s*|\s*```$/g,''));return Response.json({preview:fields,filename:b.filename,requiresReview:true},{headers:cors});
   }
   const {data:row,error:loadError}=await client.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(loadError||!row)throw new Error('Base não encontrada. Atualize os dados.');
+  if(b.action==='DRIVER_REPORT_DETAILS'){if(!mayReadDriverPayment(p))return Response.json({allowDriverPayment:false},{headers:cors});const remote=await freteBridge('DRIVER_DETAILS',b.cargaId);return Response.json({allowDriverPayment:true,payment:remote.payment},{headers:cors});}
   if(b.action==='DOCUMENT_ADD'){
    if(!String(b.path||'').startsWith(p.empresa_id+'/'))throw new Error('Arquivo de outra empresa.');
    const {data:blob,error:fileError}=await client.storage.from('forte-vendas-dossies').download(b.path);if(fileError||!blob)throw new Error('Arquivo não localizado no servidor.');
    const digest=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());const hash=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,'0')).join('');if(hash!==b.hash)throw new Error('Arquivo não corresponde ao hash informado.');
   }
   if(b.action==='IMPORT_DRIVERS'){const remote=await freteBridge('LIST_DRIVERS');b.action='DRIVERS_IMPORTED';b.internalDrivers=remote.motoristas;}
-  if(b.action==='PUBLISH_FRETE'){const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
+  if(b.action==='PUBLISH_FRETE'){const c=(row.estado.cargas||[]).find(c=>c.id===b.cargaId&&c.status!=='CANCELADA');if(!c||palletReleaseNeeded(c))throw new Error('Carga inválida ou liberação de pallets pendente.');const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
   const out=applyWorkflow(row.estado,b,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
   if(!out.replayed){const {error}=await client.rpc('fc_salvar_estado',{p_estado:out.state,p_versao:row.versao});if(error){if(error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
   let warning=out.result.warning;
