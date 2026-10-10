@@ -1,6 +1,6 @@
 const digits=v=>String(v||'').replace(/\D/g,'');
 export function phone(v){let n=digits(v);if(n.length===10||n.length===11)n='55'+n;return /^\d{12,15}$/.test(n)?n:'';}
-export function purchaseSnapshot(o){return JSON.stringify({id:o.id,numero:o.numero,fornecedorId:o.fornecedorId,unidadeId:o.unidadeId,motoristaId:o.motoristaId,placas:o.placas,itens:o.itens,origem:o.origem,destino:o.destino,pagamento:o.pagamento,modalidadeFrete:o.modalidadeFrete,regraPallets:o.regraPallets,palletQuantidade:o.palletQuantidade});}
+export function purchaseSnapshot(o){return JSON.stringify({id:o.id,numero:o.numero,modalidadeCompra:o.modalidadeCompra,motoristaSnapshot:o.motoristaSnapshot,fornecedorSnapshot:o.fornecedorSnapshot,liberacaoPalletsFornecedor:o.liberacaoPalletsFornecedor,fornecedorId:o.fornecedorId,unidadeId:o.unidadeId,motoristaId:o.motoristaId,placas:o.placas,itens:o.itens,origem:o.origem,destino:o.destino,pagamento:o.pagamento,modalidadeFrete:o.modalidadeFrete,regraPallets:o.regraPallets,palletQuantidade:o.palletQuantidade});}
 export function itemsText(rows){return rows.map(v=>`${v.qtd} ${v.unidadeMedida||'sacos'} de ${v.produto}`).join('; ');}
 export function queueCustomer(s,rows,kind,event,at,previous){
  const first=rows[0];if(!first)return;

@@ -1,0 +1,11 @@
+export const PURCHASE_MODES=['PADRAO','CSN_DIRETO','CSN_FIBRA'];
+export const searchKey=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toLowerCase();
+export function driverSnapshot(m){if(!m)return null;const keys=['id','nome','cpf','telefone','whatsapp','cnh','cnhNumero','rntrc','proprietario','proprietarioNome','proprietarioCpf','placa1','placa2','placa3','placa4','capacidadeMaximaKg','capacidadeAlvoKg','freteMotoristaId','freteVeiculoId','documentos','veiculos','componentes','statusCadastro','origemCadastro'];return structuredClone(Object.fromEntries(keys.filter(k=>m[k]!=null).map(k=>[k,m[k]])));}
+export function supplierSnapshot(f){return structuredClone(Object.fromEntries(['id','nome','cnpj','codigoCliente','codigoForte','email','emailPedidos','telefone','whatsapp','condicaoPagamento','prazosPagamento','modalidadeFrete'].filter(k=>f[k]!=null).map(k=>[k,f[k]])));}
+export function supplierWasSent(s,o){return !!(o.numeroPedidoFornecedor||o.envioComprovadoEm||o.envioAceitoEm||(s.comunicacoes||[]).some(j=>j.compraFornecedorId===o.id&&['SENDING','SENT','DELIVERED','READ','UNCERTAIN'].includes(j.state)));}
+export function canEditPurchase(s,o){const c=(s.cargas||[]).find(c=>c.id===o.cargaId);return o.status!=='CANCELADO'&&!supplierWasSent(s,o)&&!c?.ordemRevisadaEm&&!c?.finalizadaEm&&!(s.documentos||[]).some(d=>d.cargaId===c?.id&&['XML NF','PDF NF'].includes(d.categoria));}
+const dateKey=v=>!v?'':String(v).length===10?String(v):new Date(v).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
+export function filterOrders(orders,{query='',status='',from='',to=''}={}){const key=searchKey(query);return orders.filter(o=>(!status||o.status===status)&&(!from||dateKey(o.criadaEm)>=from)&&(!to||dateKey(o.criadaEm)<=to)&&(!key||searchKey([o.numero,o.numeroPedidoFornecedor,o.codigoCarga,o.fornecedor,o.motorista,o.motoristaSnapshot?.cpf,...(o.placas||[]),...(o.itens||[]).map(i=>i.produto),o.status].join(' ')).includes(key)));}
+export function palletReleaseNeeded(c){return String(c.regraPallets||'').startsWith('Solicitar')&&!c.liberacaoPalletsFornecedor?.evidencia;}
+
+export function mayReadDriverPayment(p){return ['MASTER','ADMINISTRADOR'].includes(p.perfil)||p.permissoes?.verDadosPagamentoMotorista===true;}
