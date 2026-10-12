@@ -8384,6 +8384,7 @@ function RecebiveisItau({ data, onChange }) {
       <div className="miniGrid">
         <Field label="VENDA">
           <select
+            aria-label="VENDA"
             value={vendaRef}
             onChange={(e) => setVendaRef(e.target.value)}
           >
@@ -8400,6 +8401,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="ANEXAR BOLETO DO CLIENTE — ITAÚ">
           <input
+            aria-label="ANEXAR BOLETO DO CLIENTE — ITAÚ"
             type="file"
             accept=".pdf,image/*"
             onChange={(e) => {
@@ -8413,6 +8415,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="ANEXAR COMPROVANTE DE PAGAMENTO DO CLIENTE">
           <input
+            aria-label="ANEXAR COMPROVANTE DE PAGAMENTO DO CLIENTE"
             type="file"
             accept=".pdf,image/*"
             onChange={(e) => {
@@ -8426,6 +8429,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="IMPORTAR CNAB ITAÚ">
           <input
+            aria-label="IMPORTAR CNAB ITAÚ"
             type="file"
             accept=".txt,.ret,.rem,.cnab"
             onChange={(e) => {

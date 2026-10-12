@@ -19,6 +19,7 @@ try {
   const page=await browser.newPage({viewport});const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('dialog',async dialog=>dialog.type()==='prompt'?dialog.accept('400,00'):dialog.dismiss());
   await page.route('https://fixture.test/**',route=>route.fulfill({contentType:'text/html',body:'<html lang="pt-BR"><head><meta name="viewport" content="width=device-width"></head><body><div id="root"></div></body></html>'}));
   await page.goto('https://fixture.test');await page.addScriptTag({content:output.outputFiles[0].text});
+  await page.getByRole('heading',{name:'BOLETOS DE CLIENTES / ITAÚ / CNAB'}).waitFor();assert.deepEqual(errors,[]);
   await page.getByLabel('VENDA',{exact:true}).selectOption('venda-1');
   const input=page.getByLabel('ANEXAR COMPROVANTE DE PAGAMENTO DO CLIENTE',{exact:true});
   const file={name:'comprovante-teste.pdf',mimeType:'application/pdf',buffer:Buffer.from('somente evidência sintética')};
