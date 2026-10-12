@@ -33,8 +33,9 @@ import {
 } from "@forte/core";
 import { seed } from "./seed";
 import { loadData, saveData, resetData } from "./storage";
-import { applyAuthUser, loadCloudState, saveCloudState, commitCashClosure, getPatioStatus, supabase, supabaseConfigured } from "./supabase";
+import { applyAuthUser, loadCloudState, saveCloudState, commitCashClosure, getPatioStatus, supabase, supabaseConfigured, getAuthContext } from "./supabase";
 import { putFile, getFile, openFile, downloadFile } from "./fileStore";
+import {storeReceivableFile, appendReceiptEvidence} from "./receivable-evidence.js";
 import { lerXmlNfe, gerarDanfeSimplificadoPdf } from "./nfe";
 import { connectionMissingFields, normalizeBankEventStatus } from "./banking";
 import { parseMoneyInput, roundMoney, titleOpenAmount, isClosedTitle, customerCreditAvailable, cashPayments, cashAmountByMethod, undoSaleCredits } from "./financial.js";
@@ -8310,99 +8311,37 @@ function RecebiveisItau({ data, onChange }) {
       .map((v) => ({ ...v, _canal: "VENDA BALCÃO" })),
   ].filter((v) => v.numeroVenda);
   const boletos = data.boletosClientes || [];
-  function anexar(file) {
-    if (!file || !vendaRef) return alert("SELECIONE UMA VENDA E UM BOLETO.");
-    const v = vendas.find((x) => x.id === vendaRef);
-    const id = uid("bcli");
-    onChange((d) => ({
-      ...d,
-      boletosClientes: [
-        ...(d.boletosClientes || []),
-        {
-          id,
-          vendaId: v.id,
-          numeroVenda: v.numeroVenda,
-          cliente: v.cliente || "",
-          canal: v._canal,
-          banco: "ITAÚ",
-          arquivo: file.name,
-          status: "BOLETO ANEXADO",
-          criadoEm: nowISO(),
-        },
-      ],
-    }));
-    alert(
-      `BOLETO VINCULADO À VENDA ${v.numeroVenda}. A IA USARÁ O NÚMERO DA VENDA, NOSSO NÚMERO, VALOR, VENCIMENTO E DEMAIS IDENTIFICADORES NA CONCILIAÇÃO.`,
-    );
+  async function anexar(file) {
+    if (!file || !vendaRef) return alert("SELECIONE UMA VENDA ANTES DE ANEXAR O BOLETO.");
+    const venda = vendas.find(x=>x.id===vendaRef);
+    if(!venda)return alert("VENDA NÃO ENCONTRADA. ATUALIZE OS DADOS.");
+    try {
+      const document=await storeReceivableFile({client:supabase,empresaId:getAuthContext()?.profile?.empresa_id,file,kind:"boleto",saleId:venda.id});
+      onChange(d=>(d.boletosClientes||[]).some(b=>b.vendaId===venda.id&&b.storagePath===document.storagePath)?d:{...d,boletosClientes:[...(d.boletosClientes||[]),{...document,id:uid("bcli"),vendaId:venda.id,numeroVenda:venda.numeroVenda,cliente:venda.cliente||"",canal:venda._canal,banco:"ITAÚ",status:"BOLETO ANEXADO — PENDENTE DE CONFERÊNCIA",criadoEm:nowISO()}]});
+      alert("BOLETO GUARDADO NA NUVEM E VINCULADO À VENDA. CONFIRA A GRAVAÇÃO DOS DADOS NO SISTEMA.");
+    } catch(error) { alert(error.message); }
   }
   async function anexarComprovanteCliente(file) {
-    if (!file || !vendaRef)
-      return alert("SELECIONE A VENDA ANTES DE ANEXAR O COMPROVANTE.");
-    const bruto = prompt("INFORME O VALOR RECEBIDO NESTE COMPROVANTE:");
-    if (bruto === null) return;
-    const valor = parseMoneyInput(bruto);
-    if (!Number.isFinite(valor) || valor <= 0) return alert("VALOR INVÁLIDO.");
-    const venda = vendas.find((x) => x.id === vendaRef);
-    onChange((d) => {
-      let restante = valor;
-      const agora = nowISO();
-      const contas = (d.contasReceber || []).map((t) => {
-        if (
-          t.vendaId !== vendaRef ||
-          restante <= 0 ||
-          isClosedTitle(t)
-        )
-          return t;
-        const atual = Number(t.valorRecebido || 0);
-        const saldo = titleOpenAmount(t);
-        const aplicar = Math.min(restante, saldo);
-        if (aplicar <= 0) return t;
-        restante = roundMoney(restante - aplicar);
-        const novoReceb = roundMoney(atual + aplicar);
-        const novoSaldo = roundMoney(Math.max(0, saldo - aplicar));
-        return {
-          ...t,
-          valorRecebido: novoReceb,
-          saldoAberto: novoSaldo,
-          status: novoSaldo <= 0.009 ? "LIQUIDADO" : "PARCIALMENTE PAGO",
-          pagamentos: [
-            ...(t.pagamentos || []),
-            {
-              id: uid("pgcli"),
-              data: todayISO(),
-              valor: aplicar,
-              arquivo: file.name,
-              origem: "COMPROVANTE ANEXADO",
-              criadoEm: agora,
-            },
-          ],
-        };
-      });
-      return {
-        ...d,
-        contasReceber: contas,
-        comprovantesClientes: [
-          ...(d.comprovantesClientes || []),
-          {
-            id: uid("compcli"),
-            vendaId: vendaRef,
-            numeroVenda: venda?.numeroVenda || "",
-            cliente: venda?.cliente || "",
-            arquivo: file.name,
-            valor,
-            criadoEm: agora,
-            status:
-              restante <= 0.009
-                ? "VINCULADO"
-                : "VINCULADO PARCIALMENTE — SALDO SEM TÍTULO",
-            teste: false,
-          },
-        ],
-      };
-    });
-    alert(
-      `COMPROVANTE VINCULADO À VENDA ${venda?.numeroVenda || ""}. O CONTAS A RECEBER FOI ATUALIZADO PELO VALOR INFORMADO.`,
-    );
+    if (!file || !vendaRef) return alert("SELECIONE A VENDA ANTES DE ANEXAR O COMPROVANTE.");
+    const bruto=prompt("INFORME O VALOR DECLARADO NO COMPROVANTE. O ANEXO NÃO QUITA A DÍVIDA:");
+    if(bruto===null)return;
+    const valor=parseMoneyInput(bruto);
+    if(!Number.isFinite(valor)||valor<=0)return alert("VALOR INVÁLIDO.");
+    const venda=vendas.find(x=>x.id===vendaRef);
+    if(!venda)return alert("VENDA NÃO ENCONTRADA. ATUALIZE OS DADOS.");
+    try {
+      const document=await storeReceivableFile({client:supabase,empresaId:getAuthContext()?.profile?.empresa_id,file,kind:"comprovante",saleId:venda.id});
+      onChange(d=>appendReceiptEvidence(d,{...document,id:uid("compcli"),vendaId:venda.id,numeroVenda:venda.numeroVenda,cliente:venda.cliente||"",valor,criadoEm:nowISO(),teste:false}));
+      alert("COMPROVANTE GUARDADO NA NUVEM E PENDENTE DE CONFERÊNCIA. O CONTAS A RECEBER NÃO FOI BAIXADO.");
+    } catch(error) { alert(error.message); }
+  }
+  async function abrirAnexo(document) {
+    if(!document.storageBucket||!document.storagePath)return alert("ESTE REGISTRO ANTIGO NÃO POSSUI ARQUIVO NA NUVEM. ANEXE NOVAMENTE.");
+    try {
+      const {data:link,error}=await supabase.storage.from(document.storageBucket).createSignedUrl(document.storagePath,60);
+      if(error||!link?.signedUrl)throw new Error("NÃO FOI POSSÍVEL ABRIR O DOCUMENTO.");
+      window.open(link.signedUrl,"_blank","noopener,noreferrer");
+    } catch(error) { alert(error.message); }
   }
   async function importarCnab(file) {
     if (!file) return;
@@ -8445,6 +8384,7 @@ function RecebiveisItau({ data, onChange }) {
       <div className="miniGrid">
         <Field label="VENDA">
           <select
+            aria-label="VENDA"
             value={vendaRef}
             onChange={(e) => setVendaRef(e.target.value)}
           >
@@ -8461,6 +8401,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="ANEXAR BOLETO DO CLIENTE — ITAÚ">
           <input
+            aria-label="ANEXAR BOLETO DO CLIENTE — ITAÚ"
             type="file"
             accept=".pdf,image/*"
             onChange={(e) => {
@@ -8474,6 +8415,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="ANEXAR COMPROVANTE DE PAGAMENTO DO CLIENTE">
           <input
+            aria-label="ANEXAR COMPROVANTE DE PAGAMENTO DO CLIENTE"
             type="file"
             accept=".pdf,image/*"
             onChange={(e) => {
@@ -8487,6 +8429,7 @@ function RecebiveisItau({ data, onChange }) {
         </Field>
         <Field label="IMPORTAR CNAB ITAÚ">
           <input
+            aria-label="IMPORTAR CNAB ITAÚ"
             type="file"
             accept=".txt,.ret,.rem,.cnab"
             onChange={(e) => {
@@ -8499,6 +8442,8 @@ function RecebiveisItau({ data, onChange }) {
           />
         </Field>
       </div>
+      <p className="note">COMPROVANTES SÃO EVIDÊNCIAS PENDENTES DE CONFERÊNCIA. SOMENTE A CONCILIAÇÃO OU BAIXA AUTORIZADA CONFIRMA O RECEBIMENTO.</p>
+      <div className="bankList">{(data.comprovantesClientes||[]).slice().reverse().map(c=><div className="cadRow" key={c.id}><div><b>{c.numeroVenda} • {customerName(c,data.clientes||[])}</b><small>{money(c.valor)} • {c.status}</small></div><button className="ghost dark" onClick={()=>abrirAnexo(c)}>ABRIR COMPROVANTE</button></div>)}</div>
       {cnabName && (
         <p className="note">
           <b>ÚLTIMO CNAB:</b> {cnabName}
@@ -8521,7 +8466,7 @@ function RecebiveisItau({ data, onChange }) {
               <span>{customerName(b, data.clientes || [])}</span>
               <span>{b.canal}</span>
               <span>{b.banco}</span>
-              <span>{b.arquivo}</span>
+              <span><button className="ghost dark" onClick={()=>abrirAnexo(b)}>{b.arquivo||"ABRIR ANEXO"}</button></span>
               <strong>{b.status}</strong>
               <span>{new Date(b.criadoEm).toLocaleString("pt-BR")}</span>
             </div>
