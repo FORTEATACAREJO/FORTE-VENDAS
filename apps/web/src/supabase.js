@@ -9,7 +9,12 @@ const cloudStore=supabase?createCloudStateStore(supabase,getAuthContext,(error,s
   if(error&&state)try{localStorage.setItem('forte-cloud-alteracoes-pendentes',JSON.stringify({gravadoEm:new Date().toISOString(),estado:state}));}catch{}
   window.dispatchEvent(new CustomEvent('forte-cloud-status',{detail:error?.message||''}));
 }):null;
-export async function loadCloudState(){return cloudStore?cloudStore.load():null}
+export async function loadCloudState(){
+ if(!cloudStore)return null;
+ try{const r=await supabase.functions.invoke('sync-frete-drivers',{body:{}});if(r.error||r.data?.error)window.dispatchEvent(new CustomEvent('forte-driver-status',{detail:'Consulta do Forte Frete indisponível. Os últimos dados foram preservados.'}));}
+ catch{window.dispatchEvent(new CustomEvent('forte-driver-status',{detail:'Consulta do Forte Frete indisponível. Os últimos dados foram preservados.'}));}
+ return cloudStore.load();
+}
 export async function saveCloudState(estado){return cloudStore?cloudStore.save(estado):estado}
 export async function getPatioStatus(caixaId){
  if(!supabase)throw new Error('Conferência do pátio exige conexão com o sistema.');
