@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {brandIdentity, registryConflict, productIdentityKeys} from './registry-identity.js';
+const csn={id:'csn',nome:'CIMENTO CP II F 32 ENSACADO CSN',marca:'CSN',pesoKg:50,gtin:'7898908622980'};
+const ciplan={id:'ciplan',nome:'CIMENTO CP2 F32 CIPLAN',marca:'CIPLAN',pesoKg:50,gtin:'7898972679163'};
+assert.equal(brandIdentity('Ciplam'),'CIPLAN');
+assert.equal(registryConflict('produtos',ciplan,[csn],'new'),'');
+assert.match(registryConflict('produtos',{...csn,id:'copy'},[csn],'new'),/DUPLICADO/);
+assert.match(registryConflict('produtos',{...csn,id:'copy',nome:'CIMENTO CP2 F32 50KG',gtin:''},[csn],'new'),/DUPLICADO/);
+assert.equal(registryConflict('produtos',{...csn,pesoKg:40,gtin:'',nome:'CIMENTO CP II F 32 40 KG'},[csn],'new'),'');
+assert.equal(registryConflict('produtos',{...csn,gtin:'',nome:'CIMENTO CP III RS 32'},[csn],'new'),'');
+assert.equal(registryConflict('produtos',csn,[csn],csn.id),'');
+assert.match(registryConflict('produtos',{nome:'CIMENTO',pesoKg:50},[],'new'),/MARCA/);
+assert.match(registryConflict('fornecedores',{nome:'CSN',cnpj:'60.869.336/0003-89'},[{id:'a',nome:'CSN FILIAL',cnpj:'60869336000389'}],'new'),/CADASTRADO/);
+assert.match(registryConflict('usuarios',{cpf:'123.456.789-00'},[{id:'a',nome:'Pessoa',cpf:'12345678900'}],'new'),/CADASTRADO/);
+assert.deepEqual(productIdentityKeys({...ciplan,marca:'Ciplam'}),productIdentityKeys(ciplan));
+console.log('10 identity checks passed');

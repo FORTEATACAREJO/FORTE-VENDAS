@@ -1,3 +1,4 @@
+import {registryConflict} from "./registry-identity.js";
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
@@ -11110,6 +11111,8 @@ function CadModal({
     const main = type === "produtos" ? "nome" : meta.fields[0][0];
     if (!f[main]) return alert("PREENCHA O CAMPO PRINCIPAL.");
     let obj = { ...f };
+    const duplicateError = registryConflict(type, obj, list, edit);
+    if (duplicateError) return alert(duplicateError);
     if (type === "caixasEmail")
       obj.fornecedores = String(f.fornecedoresTexto || "")
         .split(",")
