@@ -1841,10 +1841,10 @@ export default function App() {
         (t) =>
           (voto
             ? norm(t.fornecedor).includes("votorantim")
-            : t.fornecedor === nome) && t.status !== "PAGO/LIQUIDADO",
+            : t.fornecedor === nome),
       )
-      .reduce((s, t) => s + Number(t.valor || 0), 0);
-    return { total, used, available: Math.max(0, total - used) };
+      .reduce((s, t) => roundMoney(s + titleOpenAmount(t, "pagar")), 0);
+    return { total, used, available: roundMoney(Math.max(0, total - used)) };
   }
   function markPaid(id) {
     const t = data.contasPagar.find((x) => x.id === id);
