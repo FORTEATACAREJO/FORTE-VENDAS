@@ -1,3 +1,4 @@
+import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
 import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
@@ -3028,7 +3029,7 @@ export default function App() {
                 ["clientes", "CLIENTES"],
                 ["produtos", "PRODUTOS"],
                 ["fornecedores", "FORNECEDORES / MARCAS"],
-                ["motoristas", "MOTORISTAS / VEÍCULOS"],
+                ["motoristas", "CONSULTAR MOTORISTAS — FORTE FRETE"],
     ...(isAdmin
                   ? [["funcionarios", "FUNCIONÁRIOS E PERMISSÕES"]]
                   : []),
@@ -3362,6 +3363,7 @@ export default function App() {
       {modal?.type === "cad" && (
         <CadModal
           type={cadType}
+          onSyncDrivers={()=>commitOrderWorkflow({action:"IMPORT_DRIVERS",requestId:crypto.randomUUID()})}
           data={data}
           search={cadSearch}
           setSearch={setCadSearch}
@@ -10859,6 +10861,7 @@ const META = {
   },
 };
 function CadModal({
+  onSyncDrivers,
   type,
   data,
   search,
@@ -10868,6 +10871,7 @@ function CadModal({
   isAdmin,
 }) {
   if (type === "usuarios" && !isAdmin) return null;
+  if(type==="motoristas")return <DriverDirectory data={data} onClose={onClose} onSync={onSyncDrivers}/>;
   const meta = META[type];
   const list = data[type] || [];
   const [edit, setEdit] = useState(null);
@@ -12507,7 +12511,8 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
     return comuns / Math.max(a.length, b.length) >= 0.6 ? "CONFERE" : "DIVERGENTE";
   };
   function analisar() {
-    if (!tipo) return alert("INFORME SE O CADASTRO É DE CLIENTE OU MOTORISTA.");
+    if(tipo==="MOTORISTA")return alert("Cadastro de motorista é exclusivo do Forte Frete.");
+    if (!tipo) return alert("INFORME O TIPO DE CADASTRO.");
     if (!digits) return alert("INFORME O CPF/CNPJ PARA PESQUISA E CONFERÊNCIA.");
     const numeroValido = validarNumero(digits);
     const nomes = compararNomes();
@@ -12609,7 +12614,7 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
         <p>Se o tipo não for informado, o sistema exige a escolha antes de analisar.</p>
         <div className="choiceButtons">
           <button className={tipo === "CLIENTE" ? "activeChoice" : "ghost dark"} onClick={() => setTipo("CLIENTE")}>CLIENTE</button>
-          <button className={tipo === "MOTORISTA" ? "activeChoice" : "ghost dark"} onClick={() => setTipo("MOTORISTA")}>MOTORISTA</button>
+          <button className={tipo === "MOTORISTA" ? "activeChoice" : "ghost dark"} onClick={() => window.open("https://forte-frete.onrender.com","_blank","noopener,noreferrer")}>CADASTRAR MOTORISTA NO FORTE FRETE</button>
         </div>
       </div>
       <div className="miniGrid aiCadastroFields">
