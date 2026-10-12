@@ -14,6 +14,10 @@ Deno.serve(async(req)=>{
   const permissions=p.permissoes||{};
   if(!['MASTER','ADMINISTRADOR'].includes(p.perfil)&&permissions.vendas!==true&&permissions['carga-direta']!==true&&permissions['VENDAS E COMPRAS']?.editar!==true)return Response.json({error:'Sem permissão para editar vendas e compras.'},{status:403,headers:cors});
   const b=await req.json();
+  if(b.action==='IMPORT_DRIVERS'){
+   const response=await fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/sync-frete-drivers',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(25000)});
+   const result=await response.json();return Response.json(result,{status:response.status,headers:cors});
+  }
   if(['DRIVERS_IMPORTED','FRETE_PUBLISHED'].includes(b.action))throw new Error('Ação interna não permitida.');
   async function freteBridge(action:string,cargaId?:string){
     const response=await fetch('https://nkynfboqwfxhhxcsrawl.supabase.co/functions/v1/vendas-frete-bridge',{method:'POST',headers:{Authorization:auth,apikey:'sb_publishable_7nIQ1MbqxonXl6cZqlP3IA_CK-gVLf9','Content-Type':'application/json'},body:JSON.stringify({action,cargaId}),signal:AbortSignal.timeout(20000)});
