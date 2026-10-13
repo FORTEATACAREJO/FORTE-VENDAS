@@ -8,13 +8,14 @@ export function validCnpj(v){const k=digits(v);if(k.length!==14||/^(.)\1+$/.test
 export function parseNfe(xml,recipientCnpjs=[]){
  const p=xml?.nfeProc,n=p?.NFe?.infNFe||xml?.NFe?.infNFe;if(!n?.ide||!n?.emit||!n?.dest||!n.det)throw Error('XML_NAO_E_NFE');
  const key=String(n['@_Id']||'').replace(/^NFe/,''),issuer=digits(n.emit.CNPJ),recipient=digits(n.dest.CNPJ),ide=n.ide,t=n.total?.ICMSTot||{},protocol=p?.protNFe?.infProt;
- const issues=['ASSINATURA_XML_A_VALIDAR','SEFAZ_A_CONSULTAR'];
+ const issues=['ASSINATURA_XML_A_VALIDAR','SEFAZ_A_CONSULTAR','TRIBUTOS_E_TOTAL_A_CONFERIR'];
  if(!validKey(key))issues.push('CHAVE_INVALIDA');
  if(!validCnpj(issuer)||!validCnpj(recipient))issues.push('CNPJ_INVALIDO');
  if(!recipientCnpjs.includes(recipient))issues.push('CNPJ_DESTINATARIO_NAO_CADASTRADO');
- if(key.slice(6,20)!==issuer||key.slice(20,22)!=='55'||key.slice(22,25)!==String(ide.serie).padStart(3,'0')||key.slice(25,34)!==String(ide.nNF).padStart(9,'0')||key.slice(2,6)!==String(ide.dhEmi||ide.dEmi).replace(/-/g,'').slice(2,6))issues.push('IDENTIDADE_XML_DIVERGENTE');
+ if(String(ide.mod)!=='55'||key.slice(6,20)!==issuer||key.slice(20,22)!=='55'||key.slice(22,25)!==String(ide.serie).padStart(3,'0')||key.slice(25,34)!==String(ide.nNF).padStart(9,'0')||key.slice(2,6)!==String(ide.dhEmi||ide.dEmi).replace(/-/g,'').slice(2,6))issues.push('IDENTIDADE_XML_DIVERGENTE');
  if(String(protocol?.cStat)!=='100'||protocol?.chNFe!==key)issues.push('PROTOCOLO_AUTORIZACAO_DIVERGENTE');
  const items=arr(n.det).map(d=>{const x=d.prod||{},mass=String(x.xProd||'').match(/(\d+(?:[.,]\d+)?)\s*KG\b/i);return {code:x.cProd,description:x.xProd,ncm:x.NCM,cfop:x.CFOP,unit:x.uCom,quantity:Number(x.qCom),unit_price:x.vUnCom,total_cents:cents(x.vProd),nominal_kg:mass&&/^(SC|SACO|UN)$/i.test(x.uCom)?Number(mass[1].replace(',','.'))*Number(x.qCom):null,taxes:d.imposto||{},order_reference:x.xPed||null};});
+ if(items.some(i=>!Number.isFinite(i.quantity)||i.quantity<=0||!i.unit||!/^\d{8}$/.test(String(i.ncm))||!/^\d{4}$/.test(String(i.cfop))))issues.push('PRODUTOS_QUANTIDADES_OU_CODIGOS_INVALIDOS');
  const total=cents(t.vNF),productTotal=cents(t.vProd);if(total==null||items.some(x=>x.total_cents==null)||items.reduce((a,x)=>a+(x.total_cents||0),0)!==productTotal)issues.push('VALORES_PRODUTOS_DIVERGENTES');
  // NF-e total has special exceptions; flag uncertainty rather than invent a total formula.
  const volume=arr(n.transp?.vol),weightRaw=volume.map(v=>({gross:v.pesoB||null,net:v.pesoL||null,quantity:v.qVol||null,unit:v.esp||null}));
