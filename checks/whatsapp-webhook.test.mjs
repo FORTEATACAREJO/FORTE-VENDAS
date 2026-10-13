@@ -28,3 +28,40 @@ test("GET verification and unsigned POST", async () => {
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test("signed POST is forwarded and audited without leaking content", async () => {
+  process.env.WHATSAPP_APP_SECRET = "local-app-secret";
+  process.env.WHATSAPP_VENDAS_WEBHOOK_ENABLED = "false";
+  const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const logs = [];
+  let forwarded = 0;
+  globalThis.fetch = async (_url, options) => {
+    forwarded++;
+    assert.equal(options.method, "POST");
+    return { ok: true, status: 200 };
+  };
+  console.info = (...args) => logs.push(args.join(" "));
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const raw = JSON.stringify({ object: "whatsapp_business_account", secret_test_marker: "DO_NOT_LOG_123" });
+  const signature = "sha256=" + crypto.createHmac("sha256", "local-app-secret").update(raw).digest("hex");
+  try {
+    const response = await originalFetch("http://127.0.0.1:" + port + "/webhook", {
+      method: "POST", body: raw,
+      headers: { "content-type": "application/json", "x-hub-signature-256": signature },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "EVENT_RECEIVED");
+    assert.equal(forwarded, 1);
+    assert.ok(logs.some(line => line.includes('"stage":"signature_accepted"')));
+    assert.ok(logs.some(line => line.includes('"stage":"upstream_response"')));
+    assert.ok(logs.some(line => line.includes('"stage":"delivered"')));
+    assert.ok(!logs.join(" ").includes("DO_NOT_LOG_123"));
+    assert.ok(!logs.join(" ").includes(signature));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    globalThis.fetch = originalFetch;
+    console.info = originalInfo;
+  }
+});
