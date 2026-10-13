@@ -4,9 +4,12 @@ import crypto from "node:crypto";
 const port = Number(process.env.PORT || 10000);
 const webhookPaths = new Set(["/webhook", "/webhooks/whatsapp"]);
 const upstreams = () => {
-  const endpoints = [process.env.WHATSAPP_FISCAL_WEBHOOK_URL || "https://xmfpvvmvdkepmnvtdoio.supabase.co/functions/v1/whatsapp-fiscal/webhook"];
+  const endpoints = [{ name: "fiscal", url: process.env.WHATSAPP_FISCAL_WEBHOOK_URL || "https://xmfpvvmvdkepmnvtdoio.supabase.co/functions/v1/whatsapp-fiscal/webhook" }];
   if (process.env.WHATSAPP_VENDAS_WEBHOOK_ENABLED === "true") {
-    endpoints.push(process.env.WHATSAPP_VENDAS_WEBHOOK_URL || "https://gtwecfyffjszghnvtlzr.supabase.co/functions/v1/order-communications/webhook");
+    endpoints.push({ name: "vendas", url: process.env.WHATSAPP_VENDAS_WEBHOOK_URL || "https://gtwecfyffjszghnvtlzr.supabase.co/functions/v1/order-communications/webhook" });
+  }
+  if (process.env.WHATSAPP_FRETE_WEBHOOK_ENABLED === "true" && process.env.WHATSAPP_FRETE_WEBHOOK_URL) {
+    endpoints.push({ name: "frete", url: process.env.WHATSAPP_FRETE_WEBHOOK_URL });
   }
   return endpoints;
 };
@@ -67,14 +70,14 @@ const server = http.createServer(async (req, res) => {
       return reply(res, 403, { error: "Assinatura inválida" });
     }
     audit("signature_accepted", { bytes: raw.length });
-    const results = await Promise.all(upstreams().map(async (endpoint, index) => {
+    const results = await Promise.all(upstreams().map(async ({ name, url: endpoint }) => {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json", "x-hub-signature-256": String(req.headers["x-hub-signature-256"]) },
         body: raw,
         signal: AbortSignal.timeout(15000),
       });
-      audit("upstream_response", { destination: index === 0 ? "fiscal" : "vendas", status: response.status });
+      audit("upstream_response", { destination: name, status: response.status });
       return response.ok;
     }));
     if (results.some(ok => !ok)) { audit("upstream_rejected"); return reply(res, 502, { error: "Integração indisponível" }); }
