@@ -36,6 +36,8 @@ const validSignature = (raw, header, secret) => {
   return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
 };
 
+const audit = (stage, fields = {}) => console.info("whatsapp_webhook", JSON.stringify({ stage, ...fields }));
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
   if (req.method === "GET" && url.pathname === "/health") {
@@ -49,28 +51,34 @@ const server = http.createServer(async (req, res) => {
     const challenge = url.searchParams.get("hub.challenge");
     if (expected && mode === "subscribe" && supplied.length === expected.length &&
         crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected)) && challenge !== null) {
+      audit("verification_accepted");
       return reply(res, 200, challenge, "text/plain; charset=utf-8");
     }
+    audit("verification_rejected");
     return reply(res, 403, { error: "Verificação recusada" });
   }
   if (req.method !== "POST") return reply(res, 405, { error: "Método não permitido" });
   try {
     const raw = await readBody(req);
     const secret = process.env.WHATSAPP_APP_SECRET;
-    if (!secret) return reply(res, 503, { error: "Webhook não configurado" });
+    if (!secret) { audit("configuration_missing"); return reply(res, 503, { error: "Webhook não configurado" }); }
     if (!validSignature(raw, String(req.headers["x-hub-signature-256"] || ""), secret)) {
+      audit("signature_rejected");
       return reply(res, 403, { error: "Assinatura inválida" });
     }
-    const results = await Promise.all(upstreams().map(async endpoint => {
+    audit("signature_accepted", { bytes: raw.length });
+    const results = await Promise.all(upstreams().map(async (endpoint, index) => {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json", "x-hub-signature-256": String(req.headers["x-hub-signature-256"]) },
         body: raw,
         signal: AbortSignal.timeout(15000),
       });
+      audit("upstream_response", { destination: index === 0 ? "fiscal" : "vendas", status: response.status });
       return response.ok;
     }));
-    if (results.some(ok => !ok)) return reply(res, 502, { error: "Integração indisponível" });
+    if (results.some(ok => !ok)) { audit("upstream_rejected"); return reply(res, 502, { error: "Integração indisponível" }); }
+    audit("delivered");
     return reply(res, 200, "EVENT_RECEIVED", "text/plain; charset=utf-8");
   } catch (error) {
     console.error("Falha webhook WhatsApp", { code: error?.code || "WEBHOOK_ERROR" });
