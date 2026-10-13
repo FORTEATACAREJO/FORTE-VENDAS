@@ -8,6 +8,9 @@ const upstreams = () => {
   if (process.env.WHATSAPP_VENDAS_WEBHOOK_ENABLED === "true") {
     endpoints.push(process.env.WHATSAPP_VENDAS_WEBHOOK_URL || "https://gtwecfyffjszghnvtlzr.supabase.co/functions/v1/order-communications/webhook");
   }
+  if (process.env.WHATSAPP_FRETE_WEBHOOK_ENABLED === "true" && process.env.WHATSAPP_FRETE_WEBHOOK_URL) {
+    endpoints.push(process.env.WHATSAPP_FRETE_WEBHOOK_URL);
+  }
   return endpoints;
 };
 const reply = (res, status, body, contentType = "application/json; charset=utf-8") => {
@@ -74,7 +77,7 @@ const server = http.createServer(async (req, res) => {
         body: raw,
         signal: AbortSignal.timeout(15000),
       });
-      audit("upstream_response", { destination: index === 0 ? "fiscal" : "vendas", status: response.status });
+      audit("upstream_response", { destination: index === 0 ? "fiscal" : (index === 1 && process.env.WHATSAPP_VENDAS_WEBHOOK_ENABLED === "true" ? "vendas" : "frete"), status: response.status });
       return response.ok;
     }));
     if (results.some(ok => !ok)) { audit("upstream_rejected"); return reply(res, 502, { error: "Integração indisponível" }); }
