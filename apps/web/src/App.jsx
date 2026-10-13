@@ -1,3 +1,4 @@
+import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {registryConflict} from "./registry-identity.js";
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
@@ -12694,6 +12695,9 @@ function CertificateCard({ unidade, certificado, busy, onInstall, onRemove }) {
 }
 
 function Integracoes({ data, onChange, onClose, audit }) {
+  const gmailHubHost = useRef(null);
+  const [gmailServerReady,setGmailServerReady] = useState(false);
+  useEffect(() => { if(gmailHubHost.current && supabase) renderGmailCentral({client:supabase,host:gmailHubHost.current,app:"vendas",clientId:data.settings?.gmailClientId||"",onStatus:s=>setGmailServerReady(s.server_authorized===true)}); }, []);
   const [clientId, setClientId] = useState(data.settings?.gmailClientId || "");
   const [sefazEndpoint, setSefazEndpoint] = useState(
     data.settings?.sefazEndpointSeguro || `${SEFAZ_LOCAL}/api/sefaz/distribuicao`,
@@ -12714,10 +12718,10 @@ function Integracoes({ data, onChange, onClose, audit }) {
       String(b.importadoEm || "").localeCompare(String(a.importadoEm || "")),
     );
   useEffect(() => {
-    if (!data.settings?.gmailAutoSync || !Object.keys(tokens).length) return;
+    if (gmailServerReady || !data.settings?.gmailAutoSync || !Object.keys(tokens).length) return;
     const timer = setInterval(() => syncAll(true), 600000);
     return () => clearInterval(timer);
-  }, [data.settings?.gmailAutoSync, tokens, query, caixas.length]);
+  }, [gmailServerReady, data.settings?.gmailAutoSync, tokens, query, caixas.length]);
   useEffect(() => { carregarCertificados(); }, []);
   async function carregarCertificados() {
     try {
@@ -12799,6 +12803,7 @@ function Integracoes({ data, onChange, onClose, audit }) {
     });
   }
   async function connectBox(box) {
+    if(gmailServerReady) return alert("A CONTA CENTRAL JÁ ESTÁ AUTORIZADA NO SERVIDOR. USE O PAINEL GMAIL CENTRAL ACIMA.");
     try {
       setBusy(true);
       const t = await authorizeGmail(clientId.trim());
@@ -12824,6 +12829,7 @@ function Integracoes({ data, onChange, onClose, audit }) {
     }
   }
   async function syncBox(box, silent = false) {
+    if(gmailServerReady){ await gmailCentralCall(supabase,"SYNC"); if(!silent)alert("PROCESSAMENTO DA CONTA CENTRAL REALIZADO NO SERVIDOR. CONFIRA O PAINEL GMAIL CENTRAL ACIMA."); return 0; }
     let t = tokens[box.id];
     try {
       if (!t) {
@@ -13089,9 +13095,10 @@ function Integracoes({ data, onChange, onClose, audit }) {
         </div>
       </div>
       <div className="transportBox">
-        <h3>GMAIL MULTICONTAS — CAIXA DE ENTRADA DA IA</h3>
+        <div ref={gmailHubHost} />
+        <h3>HISTÓRICO GMAIL E LEITURA NESTE NAVEGADOR</h3>
         <p>
-          CADASTRE QUANTAS CONTAS FOREM NECESSÁRIAS. CADA GMAIL É AUTORIZADO
+          A CONEXÃO PERMANENTE DA CONTA CENTRAL É CONFIGURADA ACIMA. O HISTÓRICO ABAIXO FOI IMPORTADO NESTE NAVEGADOR. CADA GMAIL É AUTORIZADO
           INDIVIDUALMENTE VIA GOOGLE OAUTH EM MODO SOMENTE LEITURA. A IA
           CONSOLIDA NF-E/XML, DANFE, BOLETOS, TÍTULOS E COMPROVANTES EM UMA
           ÚNICA FILA E BLOQUEIA DUPLICIDADES ENTRE CONTAS POR MENSAGEM, CHAVE DA
@@ -14552,4 +14559,5 @@ function Pallets({ data, onChange, audit }) {
     </section>
   );
 }
+
 

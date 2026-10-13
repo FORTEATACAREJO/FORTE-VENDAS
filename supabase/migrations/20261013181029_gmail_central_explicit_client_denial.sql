@@ -1,0 +1,1 @@
+do $$ declare t text;begin foreach t in array array['gmail_hub_config','gmail_hub_oauth','gmail_hub_messages','gmail_hub_events','gmail_hub_documents','gmail_hub_outbox'] loop execute format('create policy gmail_hub_no_client on public.%I for all to anon,authenticated using(false) with check(false)',t);end loop;end $$;

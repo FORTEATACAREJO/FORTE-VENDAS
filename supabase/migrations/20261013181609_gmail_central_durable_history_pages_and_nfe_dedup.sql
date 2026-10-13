@@ -1,0 +1,1 @@
+alter table public.gmail_hub_config add column history_page text;create unique index gmail_hub_xml_nfe_unique on public.gmail_hub_documents(empresa_id,nfe_key) where nfe_key is not null and kind='XML_NFE';

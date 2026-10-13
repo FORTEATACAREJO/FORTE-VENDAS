@@ -1,0 +1,1 @@
+alter table public.gmail_hub_config add column watch_updated_at timestamptz;
