@@ -1,0 +1,3 @@
+node_modules/
+browser-qa.png
+tests/.edge-bundle.mjs
