@@ -33,6 +33,7 @@ if(req.method!=="POST"||!validOrigin)return reply({error:"Requisição não perm
 let admin:any,createdId:string|null=null;
 try{
 const b=await req.json(),action=String(b.action||"STATUS"),key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const permittedApps=frete?["frete"]:fiscal?["fiscal"]:["vendas","financeiro","venda-externa","carga-direta","patio","site"];const app=permittedApps.includes(b.app)?b.app:apps[origin];
 admin=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 const table=fiscal?"profiles":frete?"usuarios_app":"fc_perfis",idcol=fiscal?"id":"user_id";
 const readProfile=async(uid:string)=>{const r=await admin.from(table).select("*").eq(idcol,uid).maybeSingle();if(r.error)throw Error("Falha ao conferir cadastro.");return r.data};
