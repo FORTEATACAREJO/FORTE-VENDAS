@@ -1,0 +1,26 @@
+name: Gmail Central intake regression
+on:
+  pull_request:
+    paths: ['supabase/functions/gmail-central/**', 'supabase/migrations/*gmail_central*', 'apps/web/src/gmail-*.js', 'qa/gmail-central/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: qa/gmail-central/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: qa/gmail-central
+      - run: npm test
+        working-directory: qa/gmail-central
+      - run: npx playwright install --with-deps chromium
+        working-directory: qa/gmail-central
+      - run: npm run test:browser
+        working-directory: qa/gmail-central

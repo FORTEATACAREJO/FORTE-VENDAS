@@ -1,0 +1,21 @@
+{
+  "name": "forte-gmail-central-regression",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "dependencies": {
+    "fast-xml-parser": "5.11.2",
+    "unpdf": "1.8.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14",
+    "@supabase/supabase-js": "2.57.4",
+    "esbuild": "0.25.10",
+    "jose": "5.9.6",
+    "jspdf": "4.2.1",
+    "playwright": "1.56.1"
+  }
+}
