@@ -58,7 +58,15 @@ export function bankRequest(payload,accessToken,config=process.env){return new P
  const body=JSON.stringify(payload),correlationId=crypto.randomUUID();
  const r=https.request(BANK_URL,{method:'POST',cert:config.ITAU_CERTIFICATE?.replaceAll('\\n','\n'),key:config.ITAU_PRIVATE_KEY?.replaceAll('\\n','\n'),minVersion:'TLSv1.2',headers:{Authorization:'Bearer '+accessToken,'x-itau-apikey':config.ITAU_CLIENT_ID?.trim(),'x-itau-correlationID':correlationId,'x-itau-flowID':crypto.randomUUID(),'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},response=>{
   let raw='';response.setEncoding('utf8');response.on('data',chunk=>{raw+=chunk;if(raw.length>1000000)response.destroy(error('Retorno do banco excedeu o limite.',502,'BANK_RESULT_UNKNOWN'));});response.on('error',reject);
-  response.on('end',()=>{if(![200,201].includes(response.statusCode))return reject(error(`Itaú retornou HTTP ${response.statusCode}. Confira os dados e consulte a cobrança antes de repetir.`,502,'BANK_RESULT_UNKNOWN'));try{resolve({...normalizeReceipt(JSON.parse(raw),payload),correlationId});}catch(e){reject(e.publicMessage?e:error('Retorno do banco ilegível; consulte antes de repetir.',502,'BANK_RESULT_UNKNOWN'));}});
+  response.on('end',()=>{
+   if(![200,201].includes(response.statusCode)){
+    let fields=[];
+    try{const detail=JSON.parse(raw);fields=(detail.campos||detail.errors||detail.erros||detail.data?.campos||[]).map(x=>x.campo||x.field||x.path).filter(x=>typeof x==='string'&&/^[A-Za-z_][A-Za-z0-9_.\[\]]{0,100}$/.test(x)).slice(0,10);}catch{}
+    // Expose field names only, never bank-returned values, documents or credentials.
+    return reject(error(`Itaú retornou HTTP ${response.statusCode}${fields.length?'; campos: '+fields.join(', '):''}. Confira os dados e consulte a cobrança antes de repetir.`,502,'BANK_RESULT_UNKNOWN'));
+   }
+   try{resolve({...normalizeReceipt(JSON.parse(raw),payload),correlationId});}catch(e){reject(e.publicMessage?e:error('Retorno do banco ilegível; consulte antes de repetir.',502,'BANK_RESULT_UNKNOWN'));}
+  });
  });r.setTimeout(25000,()=>r.destroy(error('Itaú não respondeu. Consulte a cobrança antes de repetir.',504,'BANK_RESULT_UNKNOWN')));r.on('error',reject);r.end(body);
 });}
 export function allowProfile(p){return p?.ativo===true&&p.status_aprovacao==='APROVADO'&&!p.trocar_senha&&(['MASTER','ADMINISTRADOR'].includes(p.perfil)||(['OPERADOR_GERAL','VENDEDOR_INTERNO'].includes(p.perfil)&&(p.permissoes?.['COBRANÇAS ITAÚ']?.editar===true)));}
