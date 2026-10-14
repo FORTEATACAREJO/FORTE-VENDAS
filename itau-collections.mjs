@@ -61,7 +61,14 @@ export function bankRequest(payload,accessToken,config=process.env){return new P
   response.on('end',()=>{
    if(![200,201].includes(response.statusCode)){
     let fields=[];
-    try{const detail=JSON.parse(raw);fields=(detail.campos||detail.errors||detail.erros||detail.data?.campos||[]).map(x=>x.campo||x.field||x.path).filter(x=>typeof x==='string'&&/^[A-Za-z_][A-Za-z0-9_.\[\]]{0,100}$/.test(x)).slice(0,10);}catch{}
+    try{const detail=JSON.parse(raw);fields=(detail.campos||detail.errors||detail.erros||detail.data?.campos||[]).flatMap(x=>{
+     const field=x.campo||x.field||x.path;
+     if(typeof field!=='string'||! /^[A-Za-z_][A-Za-z0-9_.\[\]]{0,100}$/.test(field))return [];
+     let message=payload.etapa_processo_boleto==='validacao'?String(x.mensagem||x.message||''):'';
+     if(/secret|token|authorization|bearer|senha|password/i.test(message))message='';
+     message=message.replace(/\b[A-Za-z0-9_-]{24,}\b/g,'[valor]').replace(/\b\d{5,}\b/g,'[valor]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig,'[contato]').slice(0,180);
+     return [field+(message?' ('+message+')':'')];
+    }).slice(0,10);}catch{}
     // Expose field names only, never bank-returned values, documents or credentials.
     return reject(error(`Itaú retornou HTTP ${response.statusCode}${fields.length?'; campos: '+fields.join(', '):''}. Confira os dados e consulte a cobrança antes de repetir.`,502,'BANK_RESULT_UNKNOWN'));
    }
