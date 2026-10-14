@@ -831,6 +831,21 @@ export default function App() {
       return receipt;
     } finally {workflowBusy.current=false;}
   }
+  async function commitItauCollection(body) {
+    if(!supabaseConfigured)throw new Error('Esta operação exige conexão com o servidor.');
+    if(workflowBusy.current)throw new Error('Aguarde a operação atual.');
+    workflowBusy.current=true;clearTimeout(cloudTimer.current);
+    try{
+      await saveCloudState(data);
+      const {data:session,error}=await supabase.auth.getSession();
+      if(error||!session?.session?.access_token)throw new Error('Entre novamente no Forte Vendas.');
+      const response=await fetch('https://forte-itau-api.onrender.com/api/itau/collections',{method:'POST',headers:{Authorization:'Bearer '+session.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
+      const receipt=await response.json();
+      if(!response.ok||receipt.error)throw new Error(receipt.error||'Não foi possível confirmar a cobrança.');
+      if(body.action==='REGISTER'){const remote=await loadCloudState();if(!remote)throw new Error('Atualize os dados para conferir a cobrança.');setData(applyAuthUser(remote));}
+      return receipt;
+    }finally{workflowBusy.current=false;}
+  }
   const currentUser =
     data.usuarios.find((u) => u.id === data.currentUserId) || data.usuarios[0];
   const isAdmin = !!currentUser?.admin;
@@ -3403,6 +3418,7 @@ export default function App() {
       )}{" "}
       {modal?.type === "emissorBoletos" && (
         <EmissorBoletosVenda
+          onBankAction={commitItauCollection}
           data={data}
           onChange={setData}
           canal={modal.canal}
@@ -8148,7 +8164,7 @@ function SaudeFinanceira({ data, onChange }) {
   );
 }
 
-function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, initialVendaId = "" }) {
+function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, initialVendaId = "", onBankAction }) {
   const rawSales=(canal === "VENDA BALCÃO" ? data.vendasBalcao || [] : data.vendas || [])
     .filter(v=>v.numeroVenda&&v.status!=="CANCELADA"&&(canal!=="VENDA BALCÃO"||v.status==="CONCLUÍDA"));
   const vendas=Object.values(rawSales.reduce((groups,v)=>{const key=v.workflowInterno?(v.grupoPedidoId||v.id):v.id;if(!groups[key])groups[key]={...v,id:key,totalGeral:0,vendaIds:[]};const group=groups[key];group.totalGeral+=Number(v.totalGeral||v.totalVenda||v.total||v.valorTotal||v.valor||Number(v.qtd||0)*Number(v.precoUnitario||0));group.vendaIds.push(v.id);return groups;},{}));
@@ -8169,6 +8185,21 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
   const [envioEmail, setEnvioEmail] = useState(false);
   const [incluirNota, setIncluirNota] = useState(false);
   const [envioAutomatico, setEnvioAutomatico] = useState(true);
+  const [bankBusy,setBankBusy]=useState(false);
+  const [bankMessage,setBankMessage]=useState('');
+  const [validated,setValidated]=useState({});
+  async function bankAction(b,action){
+    if(bankBusy)return;
+    if(action==='REGISTER'&&!confirm(`Registrar a cobrança no Itaú: ${money(b.valor)} • vencimento ${formatDateBR(b.vencimento)} • ${b.cliente}?`))return;
+    setBankBusy(true);setBankMessage(action==='VALIDATE'?'Validando no Itaú, sem registrar cobrança…':'Aguardando confirmação do Itaú…');
+    try{
+      if(!onBankAction)throw new Error('Conector Itaú indisponível.');
+      const result=await onBankAction({action,boletoId:b.id});
+      if(action==='VALIDATE'){setValidated(v=>({...v,[b.id]:JSON.stringify(b)}));setBankMessage('Itaú confirmou a validação. Esta operação não registrou cobrança.');}
+      else setBankMessage(result.registered?'Cobrança registrada e gravada no servidor.': 'Cobrança em conferência. Não repita a emissão; confira o retorno bancário.');
+    }catch(e){setBankMessage(e.name==='TimeoutError'?'Resposta não confirmada. Não repita a emissão; confira o retorno bancário.':e.message);}
+    finally{setBankBusy(false);}
+  }
   const venda = vendas.find((v) => v.id === vendaId);
   const total = Number(venda?.totalGeral || venda?.totalVenda || venda?.total || venda?.valorTotal || venda?.valor || Number(venda?.qtd||0)*Number(venda?.precoUnitario||0));
   function emitir() {
@@ -8186,7 +8217,7 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
       return { id:uid("bcli"), vendaId:venda.id, vendaIds:venda.vendaIds, numeroVenda:venda.numeroVenda, cliente:venda.cliente || venda.nomeCliente || "", clienteId:venda.clienteId || "", canal, banco:"ITAÚ", especie:itau.especiePadrao || "DM - DUPLICATA DE VENDA MERCANTIL", parcela:i+1, totalParcelas:qtd, valor, vencimento:d.toISOString().slice(0,10), jurosMes:juros, multa:multaValor, negativacao:false, protestoAutomatico:false, status:"AGUARDANDO EMISSÃO API", alteracaoLiberadaEm:new Date(Date.now()+86400000).toISOString().slice(0,10), envioWhatsapp, envioEmail, incluirNota, envioAutomatico, lembreteDiarioAposVencimento:true, criadoEm:nowISO(), criadoPor:currentUser?.nome || "USUÁRIO" };
     });
     onChange((d) => ({ ...d, boletosClientes:[...(d.boletosClientes || []), ...novos], bankEvents:[...(d.bankEvents || []), ...novos.map((b) => ({ id:uid("bankevt"), provedor:"ITAU", tipo:"SOLICITAÇÃO DE EMISSÃO", status:"PENDENTE", numeroVenda:b.numeroVenda, boletoId:b.id, detalhe:`PARCELA ${b.parcela}/${b.totalParcelas} • ${money(b.valor)} • VENC. ${formatDateBR(b.vencimento)}`, criadoEm:nowISO(), usuario:currentUser?.nome || "USUÁRIO" }))] }));
-    alert(`${qtd} TÍTULO(S) PREPARADO(S) PARA EMISSÃO ITAÚ. A API SERÁ ACIONADA QUANDO AS CREDENCIAIS FOREM LIBERADAS.`);
+    alert(`${qtd} TÍTULO(S) PREPARADO(S). USE VALIDAR NO ITAÚ ANTES DE SOLICITAR O REGISTRO DEFINITIVO.`);
   }
   function alterar() {
     const atual = boletos.find((b) => b.id === editId);
@@ -8217,7 +8248,8 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
     const report=collectionReport(data,filters);
     createCollectionPDF(report,filters,connection).save(`BOLETOS-${tipo}-${report.today}.pdf`);
   }
-  return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={onClose} wide>
+  return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={()=>{if(!bankBusy)onClose();}} wide>
+    <p role="status">{bankMessage}</p>
     <div className="transportBox"><p className="note">ESTA TELA PERMITE EMITIR, ENVIAR E ALTERAR BOLETOS DA PRÓPRIA VENDA. A ALTERAÇÃO É LIBERADA NO DIA SEGUINTE À EMISSÃO, CONFORME O FLUXO ATUAL DO ITAÚ. NÃO EXIBE A FRANCESINHA DETALHADA.</p><div className="actions"><button className="ghost dark" onClick={() => relatorio("A VENCER")}>RELATÓRIO A VENCER</button><button className="ghost dark" onClick={() => relatorio("VENCIDOS")}>RELATÓRIO VENCIDOS</button></div></div>
     <h3>NOVA EMISSÃO</h3><div className="miniGrid">
       <Field label="VENDA"><select value={vendaId} onChange={(e) => setVendaId(e.target.value)}><option value="">SELECIONE...</option>{vendas.slice().reverse().map((v) => <option key={v.id} value={v.id}>{v.numeroVenda} • {customerName(v, data.clientes || []) || "CLIENTE"} • {money(v.total || v.valorTotal || v.valor)}</option>)}</select></Field>
@@ -8234,7 +8266,7 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
       <Field label="JUROS AO MÊS (%)"><input type="number" min="0" step="0.01" value={novoJurosMes} onChange={(e) => setNovoJurosMes(e.target.value)} /></Field>
       <Field label="MULTA (%)"><input type="number" min="0" step="0.01" value={novaMulta} onChange={(e) => setNovaMulta(e.target.value)} /></Field>
     </div><div className="actions"><button onClick={alterar}>REGISTRAR ALTERAÇÃO</button></div>
-    <h3>BOLETOS DISPONÍVEIS NESTA VENDA</h3><div className="bankList">{boletos.filter((b)=>!vendaId || b.vendaId===vendaId).slice().reverse().map((b)=><div className="cadRow" key={b.id}><div><b>{b.numeroVenda} • PARCELA {b.parcela || 1}/{b.totalParcelas || 1}</b><small>{formatDateBR(b.vencimento)} • {money(b.valor)} • {b.status} • ALTERAÇÃO {todayISO() >= (b.alteracaoLiberadaEm || todayISO()) ? "LIBERADA" : `EM ${formatDateBR(b.alteracaoLiberadaEm)}`}</small></div><span>{b.arquivo || b.url ? "DOCUMENTO DISPONÍVEL" : "AGUARDANDO ITAÚ"}</span></div>)}</div>
+    <h3>BOLETOS DISPONÍVEIS NESTA VENDA</h3><div className="bankList">{boletos.filter((b)=>!vendaId || b.vendaId===vendaId).slice().reverse().map((b)=><div className="cadRow" key={b.id}><div><b>{b.numeroVenda} • PARCELA {b.parcela || 1}/{b.totalParcelas || 1}</b><small>{formatDateBR(b.vencimento)} • {money(b.valor)} • {b.status} • ALTERAÇÃO {todayISO() >= (b.alteracaoLiberadaEm || todayISO()) ? "LIBERADA" : `EM ${formatDateBR(b.alteracaoLiberadaEm)}`}</small></div><div><span>{b.linhaDigitavel || b.arquivo || b.url ? "RETORNO DISPONÍVEL" : "AGUARDANDO ITAÚ"}</span><button type="button" disabled={bankBusy || !!b.idCobranca || b.status==="CANCELADO"} onClick={()=>bankAction(b,"VALIDATE")}>VALIDAR NO ITAÚ</button><button type="button" disabled={bankBusy || validated[b.id]!==JSON.stringify(b) || !!b.idCobranca || b.status==="CANCELADO"} onClick={()=>bankAction(b,"REGISTER")}>REGISTRAR BOLETO</button>{b.linhaDigitavel&&<small>LINHA DIGITÁVEL: {b.linhaDigitavel}</small>}</div></div>)}</div>
   </Modal>;
 }
 

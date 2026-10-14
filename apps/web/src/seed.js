@@ -21,7 +21,7 @@ export const seed = {
       cnpj: "49832961000232",
       agencia: "4343",
       conta: "98861-6",
-      carteira: "157",
+      carteira: "109",
       convenio: "",
       ambiente: "HOMOLOGAÇÃO",
       autenticacao: "OAUTH2 + MTLS",

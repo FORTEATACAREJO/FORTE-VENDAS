@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {collectionsRequest} from './itau-collections.mjs';
 
 const port = Number(process.env.PORT || 10000);
 const safeError = (code, message, status = 500) => Object.assign(new Error(message), { code, publicMessage: message, status });
@@ -143,6 +144,15 @@ const setupPage = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta
 const server = http.createServer(async (req, res) => {
   try {
     const requestUrl = new URL(req.url, "https://forte-itau-api.onrender.com");
+    if(requestUrl.pathname==='/api/itau/collections'){
+      const origin=String(req.headers.origin||'');
+      if(origin&&origin!=='https://forte-vendas.onrender.com')return send(res,403,{error:'Origem não autorizada'});
+      const cors=origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin','Access-Control-Allow-Headers':'authorization, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'}:{};
+      if(req.method==='OPTIONS')return send(res,204,'','application/json',cors);
+      if(req.method!=='POST')return send(res,405,{error:'Método inválido'},'application/json',cors);
+      try {const input=JSON.parse(await readBody(req));const result=await collectionsRequest(req,input,requestToken);return send(res,200,result,'application/json',cors);}
+      catch(e){console.error('Falha cobrança Itaú',{code:e?.code||'INTEGRATION_ERROR'});return send(res,e?.publicMessage?e.status:500,{error:e?.publicMessage||'Falha segura na cobrança Itaú',code:e?.code||'INTEGRATION_ERROR'},'application/json',cors);}
+    }
     if (["/webhook", "/webhooks/whatsapp"].includes(requestUrl.pathname) && req.method === "GET") {
       const mode = requestUrl.searchParams.get("hub.mode");
       const token = requestUrl.searchParams.get("hub.verify_token");
