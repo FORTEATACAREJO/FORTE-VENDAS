@@ -1,6 +1,6 @@
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {registryConflict} from "./registry-identity.js";
-import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,companyAddressPatch,consultarCnpj} from './customer-address.js';
+import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
@@ -10932,6 +10932,24 @@ function CadModal({
   const [edit, setEdit] = useState(null);
   const [f, setF] = useState({});
   const [busy, setBusy] = useState(false);
+  const [cnpjStatus, setCnpjStatus] = useState('');
+  const cnpjRequest = useRef(0);
+  const cnpjAttempt = useRef('');
+  const cnpjDocument = String(f.documento || '').replace(/\D/g, '');
+  useEffect(() => {
+    // Invalidate responses when the document or editing session changes.
+    cnpjRequest.current++;
+    setBusy(false);
+    setCnpjStatus('');
+    if (type !== 'clientes' || !edit || cnpjDocument.length !== 14 || !validCustomerDocument(cnpjDocument)) {
+      cnpjAttempt.current = '';
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (cnpjAttempt.current !== cnpjDocument) lookupClient(cnpjDocument);
+    }, 700);
+    return () => { clearTimeout(timer); cnpjRequest.current++; };
+  }, [type, edit, cnpjDocument]);
   const [filtroFinalidade, setFiltroFinalidade] = useState("REVENDA");
   const [filtroCategoria, setFiltroCategoria] = useState("TODAS");
   const [obraCliente, setObraCliente] = useState({
@@ -10994,6 +11012,8 @@ function CadModal({
       )),
   );
   const begin = (x) => {
+    cnpjRequest.current++;
+    cnpjAttempt.current = x && !customerAddressError(x) ? String(x.documento || '').replace(/\D/g, '') : '';
     setEdit(x?.id || "new");
     setF(
       x
@@ -11021,53 +11041,35 @@ function CadModal({
           },
     );
   };
-  async function lookupClient() {
-    const n = String(f.documento || "").replace(/\D/g, "");
-    if (n.length !== 14) return alert("INFORME UM CNPJ COM 14 DÍGITOS.");
-    if(!confirm('Consultar este CNPJ na BrasilAPI para preencher os dados cadastrais? O CNPJ será enviado ao serviço.'))return;
+  async function lookupClient(document = cnpjDocument) {
+    const n = String(document || '').replace(/\D/g, '');
+    if (n.length !== 14 || !validCustomerDocument(n)) {
+      setCnpjStatus('INFORME UM CNPJ VÁLIDO. PARA CPF, PREENCHA O ENDEREÇO E CONSULTE O CEP.');
+      return;
+    }
+    const request = ++cnpjRequest.current;
+    cnpjAttempt.current = n;
+    setBusy(true);
+    setCnpjStatus('CONSULTANDO CNPJ NA BRASILAPI...');
     try {
-      setBusy(true);
-      const j = await consultarCnpj(n,{consent:true});
-      const ie =
-        j.inscricao_estadual ||
-        j.inscricao_estadual_normalizada ||
-        j.ie ||
-        (j.inscricoes_estaduais || []).find((x) => x.ativo !== false)
-          ?.inscricao_estadual ||
-        (j.inscricoes_estaduais || [])[0]?.inscricao_estadual ||
-        "";
-      setF((x) => String(x.documento||'').replace(/\D/g,'')!==n?x:({
-        ...x,
-        nome: upper(j.nome_fantasia || j.razao_social || x.nome),
-        razaoSocial: upper(j.razao_social || ""),
-        nomeFantasia: upper(j.nome_fantasia || ""),
+      const j = await consultarCnpj(n, {consent:true});
+      if (request !== cnpjRequest.current) return;
+      const ie = j.inscricao_estadual || j.inscricao_estadual_normalizada || j.ie ||
+        (j.inscricoes_estaduais || []).find(x => x.ativo !== false)?.inscricao_estadual || '';
+      const optional = Object.fromEntries(Object.entries({
         inscricaoEstadual: upper(ie),
-        situacaoCadastral: upper(
-          j.descricao_situacao_cadastral || j.situacao_cadastral || "",
-        ),
-        regimeTributario: upper(
-          j.regime_tributario || j.regimeTributario || "",
-        ),
-        optanteSimples: String(
-          j.opcao_pelo_simples ?? j.optante_simples ?? j.optanteSimples ?? "",
-        ).toUpperCase(),
-        fonteCadastro: upper(j._fonteFiscal || "BRASILAPI / REDESIM"),
-        cep: j.cep || x.cep || "",
-        logradouro: upper(j.logradouro || x.logradouro || ""),
-        numero: upper(j.numero || x.numero || ""),
-        bairro: upper(j.bairro || x.bairro || ""),
-        cidade: upper(j.municipio || x.cidade || ""),
-        uf: upper(j.uf || x.uf || ""),
-        telefone: j.ddd_telefone_1 || "",
-        email: j.email || x.email || "",
-        ...companyAddressPatch(j,n),
+        situacaoCadastral: upper(j.descricao_situacao_cadastral || j.situacao_cadastral || ''),
+        telefone: j.ddd_telefone_1 || '', email: j.email || '',
+      }).filter(([,value]) => value !== ''));
+      setF(x => String(x.documento || '').replace(/\D/g, '') !== n ? x : ({
+        ...x, ...optional, ...companyAddressPatch(j,n),
       }));
-      if (!ie)
-        alert("CNPJ LOCALIZADO, MAS A FONTE NÃO RETORNOU INSCRIÇÃO ESTADUAL.");
+      setCnpjStatus('DADOS PREENCHIDOS PELA BRASILAPI. CONFIRA ANTES DE SALVAR.' +
+        (ie ? '' : ' INSCRIÇÃO ESTADUAL NÃO INFORMADA PELA FONTE.'));
     } catch (e) {
-      alert(e.message || "FALHA NA BUSCA DO CNPJ.");
+      if (request === cnpjRequest.current) setCnpjStatus(e.message || 'FALHA NA BUSCA DO CNPJ. TENTE NOVAMENTE OU PREENCHA OS DADOS.');
     } finally {
-      setBusy(false);
+      if (request === cnpjRequest.current) setBusy(false);
     }
   }
   async function lookupCep() {
@@ -11422,14 +11424,15 @@ function CadModal({
           />
           {type === "clientes" && (
             <div className="reportBar">
-              <button onClick={lookupClient} disabled={busy}>
+              <button onClick={() => lookupClient()} disabled={busy}>
                 {busy ? "BUSCANDO CNPJ..." : "BUSCAR DADOS PELO CNPJ"}
               </button>
               <span className="note">
-                CNPJ: CONSULTA NA BRASILAPI COM CONFIRMAÇÃO. CPF: PREENCHA O ENDEREÇO E CONSULTE O CEP. UF E CEP SÃO OBRIGATÓRIOS.
+                AO COMPLETAR UM CNPJ VÁLIDO, ELE SERÁ CONSULTADO NA BRASILAPI PARA PREENCHER O CADASTRO. PARA CPF, PREENCHA O ENDEREÇO E CONSULTE O CEP. UF E CEP SÃO OBRIGATÓRIOS.
               </span>
             </div>
           )}
+          {type === 'clientes' && cnpjStatus && <p className="note" role="status">{cnpjStatus}</p>}
           <div className="miniGrid">
             {meta.fields.map(([k, l, t]) => (
               <Field key={k} label={l}>
@@ -12074,7 +12077,7 @@ function CadModal({
             <button className="ghost dark" onClick={() => setEdit(null)}>
               CANCELAR
             </button>
-            <button onClick={save}>
+            <button onClick={save} disabled={type === "clientes" && busy}>
               {edit === "new" ? "SALVAR" : "SALVAR ALTERAÇÕES"}
             </button>
           </div>
