@@ -39,7 +39,7 @@ export function buildPayload(bill,customer,ourNumber,mode='validacao'){
  if(!validDocument(document))throw error('Confira o CPF/CNPJ do cliente antes de emitir.');
  const name=text(customer.razaoSocial||customer.nome,50);
  const address={nome_logradouro:text(customer.endereco||customer.logradouro,100),nome_bairro:text(customer.bairro,15),nome_cidade:text(customer.cidade,20),sigla_UF:text(customer.uf,2),numero_CEP:digits(customer.cep)};
- if(!name||!address.nome_logradouro||!address.nome_bairro||!address.nome_cidade||!['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].includes(address.sigla_UF)||address.numero_CEP.length!==8)throw error('Complete nome, endereço, bairro, cidade, UF e CEP do cliente.');
+ if(!name||!address.nome_logradouro||!address.nome_bairro||!address.nome_cidade||!['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].includes(address.sigla_UF)||(address.numero_CEP.length!==8||address.numero_CEP==='00000000'))throw error('Complete nome, endereço, bairro, cidade, UF e CEP do cliente.');
  if(!/^\d{8}$/.test(String(ourNumber)))throw error('Nosso número inválido.');
  const due=date(bill.vencimento);if(due<today())throw error('Informe um vencimento a partir de hoje.');
  const pessoa={nome_pessoa:name,tipo_pessoa:{codigo_tipo_pessoa:document.length===14?'J':'F',[document.length===14?'numero_cadastro_nacional_pessoa_juridica':'numero_cadastro_pessoa_fisica']:document}};

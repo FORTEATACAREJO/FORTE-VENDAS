@@ -1,5 +1,6 @@
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {registryConflict} from "./registry-identity.js";
+import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,companyAddressPatch,consultarCnpj} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
@@ -11023,9 +11024,10 @@ function CadModal({
   async function lookupClient() {
     const n = String(f.documento || "").replace(/\D/g, "");
     if (n.length !== 14) return alert("INFORME UM CNPJ COM 14 DÍGITOS.");
+    if(!confirm('Consultar este CNPJ na BrasilAPI para preencher os dados cadastrais? O CNPJ será enviado ao serviço.'))return;
     try {
       setBusy(true);
-      const j = await consultarCnpj(n);
+      const j = await consultarCnpj(n,{consent:true});
       const ie =
         j.inscricao_estadual ||
         j.inscricao_estadual_normalizada ||
@@ -11034,7 +11036,7 @@ function CadModal({
           ?.inscricao_estadual ||
         (j.inscricoes_estaduais || [])[0]?.inscricao_estadual ||
         "";
-      setF((x) => ({
+      setF((x) => String(x.documento||'').replace(/\D/g,'')!==n?x:({
         ...x,
         nome: upper(j.nome_fantasia || j.razao_social || x.nome),
         razaoSocial: upper(j.razao_social || ""),
@@ -11050,14 +11052,15 @@ function CadModal({
           j.opcao_pelo_simples ?? j.optante_simples ?? j.optanteSimples ?? "",
         ).toUpperCase(),
         fonteCadastro: upper(j._fonteFiscal || "BRASILAPI / REDESIM"),
-        cep: j.cep || "",
-        logradouro: upper(j.logradouro || ""),
-        numero: upper(j.numero || ""),
-        bairro: upper(j.bairro || ""),
-        cidade: upper(j.municipio || ""),
-        uf: upper(j.uf || ""),
+        cep: j.cep || x.cep || "",
+        logradouro: upper(j.logradouro || x.logradouro || ""),
+        numero: upper(j.numero || x.numero || ""),
+        bairro: upper(j.bairro || x.bairro || ""),
+        cidade: upper(j.municipio || x.cidade || ""),
+        uf: upper(j.uf || x.uf || ""),
         telefone: j.ddd_telefone_1 || "",
-        email: j.email || "",
+        email: j.email || x.email || "",
+        ...companyAddressPatch(j,n),
       }));
       if (!ie)
         alert("CNPJ LOCALIZADO, MAS A FONTE NÃO RETORNOU INSCRIÇÃO ESTADUAL.");
@@ -11156,6 +11159,10 @@ function CadModal({
     const main = type === "produtos" ? "nome" : meta.fields[0][0];
     if (!f[main]) return alert("PREENCHA O CAMPO PRINCIPAL.");
     let obj = { ...f };
+    if(type==='clientes'){
+      const error=customerAddressError(obj);if(error)return alert(error);
+      obj=normalizeCustomerAddress(obj);
+    }
     const duplicateError = registryConflict(type, obj, list, edit);
     if (duplicateError) return alert(duplicateError);
     if (type === "caixasEmail")
@@ -11419,8 +11426,7 @@ function CadModal({
                 {busy ? "BUSCANDO CNPJ..." : "BUSCAR DADOS PELO CNPJ"}
               </button>
               <span className="note">
-                PREENCHA O CPF/CNPJ E CLIQUE PARA CONSULTAR. A IE É PREENCHIDA
-                QUANDO A FONTE DISPONIBILIZAR.
+                CNPJ: CONSULTA NA BRASILAPI COM CONFIRMAÇÃO. CPF: PREENCHA O ENDEREÇO E CONSULTE O CEP. UF E CEP SÃO OBRIGATÓRIOS.
               </span>
             </div>
           )}
@@ -11631,6 +11637,8 @@ function CadModal({
                       <option key={u}>{u}</option>
                     ))}
                   </select>
+                ) : type === "clientes" && k === "uf" ? (
+                  <select required value={f.uf||''} onChange={e=>setF(x=>({...x,uf:e.target.value}))}><option value="">SELECIONE A UF — OBRIGATÓRIA</option>{CUSTOMER_UFS.map(uf=><option key={uf} value={uf}>{uf}</option>)}</select>
                 ) : type === "clientes" && k === "cep" ? (
                   <div className="inlineField">
                     <input
@@ -11645,6 +11653,7 @@ function CadModal({
                         }
                       }}
                       placeholder="CEP — 8 DÍGITOS"
+                      required inputMode="numeric" maxLength={9}
                     />
                     <button type="button" onClick={lookupCep} disabled={busy}>
                       {busy ? "BUSCANDO..." : "BUSCAR CEP"}
@@ -12531,6 +12540,7 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
   const [documento, setDocumento] = useState("");
   const [nomeInformado, setNomeInformado] = useState("");
   const [nomeDocumento, setNomeDocumento] = useState("");
+  const [clienteEndereco,setClienteEndereco]=useState({cep:'',uf:'',logradouro:'',bairro:'',cidade:''});
   const [telefone, setTelefone] = useState("");
   const [arquivos, setArquivos] = useState([]);
   const [analise, setAnalise] = useState(null);
@@ -12609,6 +12619,7 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
     setAnalise(null);
   }
   function salvarPendente() {
+    if(tipo==='CLIENTE'){const error=customerAddressError({documento:digits,...clienteEndereco});if(error)return alert(error);}
     if (!analise) return alert("EXECUTE A CONFERÊNCIA ANTES DE SALVAR.");
     if (existente) return alert("DOCUMENTO JÁ CADASTRADO. ABRA O CADASTRO EXISTENTE PARA ATUALIZAR.");
     const id = uid(tipo === "CLIENTE" ? "cli" : "mot");
@@ -12619,6 +12630,7 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
             id,
             nome,
             documento: digits,
+            ...normalizeCustomerAddress({documento:digits,...clienteEndereco}),
             telefone,
             whatsapp: telefone,
             vendedorResponsavelId: currentUser?.id || "",
@@ -12683,6 +12695,7 @@ function CadastroIaModal({ data, onChange, currentUser, onClose }) {
         <Field label="NOME LIDO NO DOCUMENTO">
           <UpperInput value={nomeDocumento} onChange={(v) => { setNomeDocumento(v); setAnalise(null); }} />
         </Field>
+        {tipo==='CLIENTE'&&<><Field label="CEP — OBRIGATÓRIO"><input required inputMode="numeric" value={clienteEndereco.cep} onChange={e=>setClienteEndereco(x=>({...x,cep:e.target.value}))}/></Field><Field label="UF — OBRIGATÓRIA"><select required value={clienteEndereco.uf} onChange={e=>setClienteEndereco(x=>({...x,uf:e.target.value}))}><option value="">SELECIONE...</option>{CUSTOMER_UFS.map(uf=><option key={uf}>{uf}</option>)}</select></Field>{[['logradouro','LOGRADOURO'],['bairro','BAIRRO'],['cidade','CIDADE']].map(([key,label])=><Field key={key} label={label}><UpperInput value={clienteEndereco[key]} onChange={v=>setClienteEndereco(x=>({...x,[key]:v}))}/></Field>)}</>}
         <Field label="TELEFONE / WHATSAPP">
           <input inputMode="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
         </Field>
