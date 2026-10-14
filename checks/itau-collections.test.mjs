@@ -16,8 +16,8 @@ function fixture(payload){
  const line=a+mod10(a)+b+mod10(b)+c+mod10(c)+bar[4]+bar.slice(5,19);
  return {data:{id_boleto:'bank1',etapa_processo_boleto:payload.etapa_processo_boleto,beneficiario:payload.beneficiario,dado_boleto:{codigo_carteira:'109',dados_individuais_boleto:[{...payload.dado_boleto.dados_individuais_boleto[0],codigo_barras:bar,numero_linha_digitavel:line}]}}};
 }
-test('payload usa contrato Itaú: carteira 109, dinheiro decimal e percentual de 12 dígitos; não envia Pix/protesto/negativação',()=>{
- const p=buildPayload(bill,customer,'00000001');assert.equal(p.etapa_processo_boleto,'validacao');assert.equal(p.beneficiario.id_beneficiario,'434300988616');assert.equal(p.dado_boleto.codigo_tipo_vencimento,3);assert.equal(p.dado_boleto.dados_individuais_boleto[0].valor_titulo,'10.00');assert.equal(p.dado_boleto.juros.percentual_juros,'000000500000');assert.equal(p.dado_boleto.multa.percentual_multa,'000000200000');assert.doesNotMatch(JSON.stringify(p),/pix|protesto|negativacao/i);
+test('payload usa contrato Itaú: carteira 109, valor em centavos com 17 dígitos e percentual de 12 dígitos; não envia Pix/protesto/negativação',()=>{
+ const p=buildPayload(bill,customer,'00000001');assert.equal(p.etapa_processo_boleto,'validacao');assert.equal(p.beneficiario.id_beneficiario,'434300988616');assert.equal(p.dado_boleto.codigo_tipo_vencimento,3);assert.equal(p.dado_boleto.dados_individuais_boleto[0].valor_titulo,'00000000000001000');assert.equal(p.dado_boleto.juros.percentual_juros,'000000500000');assert.equal(p.dado_boleto.multa.percentual_multa,'000000200000');assert.doesNotMatch(JSON.stringify(p),/pix|protesto|negativacao/i);
 });
 test('dados incompletos, documento inválido, centavos inválidos, parcela e venda cancelada são bloqueados antes de consumir o banco',()=>{
  assert.equal(validDocument(customer.documento),true);assert.equal(validDocument('11111111111'),false);
@@ -56,7 +56,7 @@ test('teste isolado exige autorização, força validação e não grava estado 
   return {ok:true,json:async()=>data};
  };
  https.request=(url,options,callback)=>{assert.equal(url,BANK_URL);const req=new EventEmitter();req.setTimeout=()=>{};req.end=body=>{
-  const envelope=JSON.parse(body);assert.deepEqual(Object.keys(envelope),['data']);const payload=envelope.data;calls++;assert.equal(payload.etapa_processo_boleto,'validacao');assert.equal(payload.dado_boleto.codigo_carteira,'109');assert.equal(payload.dado_boleto.dados_individuais_boleto[0].valor_titulo,'10.00');
+  const envelope=JSON.parse(body);assert.deepEqual(Object.keys(envelope),['data']);const payload=envelope.data;calls++;assert.equal(payload.etapa_processo_boleto,'validacao');assert.equal(payload.dado_boleto.codigo_carteira,'109');assert.equal(payload.dado_boleto.dados_individuais_boleto[0].valor_titulo,'00000000000001000');
   const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);queueMicrotask(()=>{res.emit('data',JSON.stringify(fixture(payload)));res.emit('end');});
  };return req;};
  try{
