@@ -33,7 +33,7 @@ test('retorno somente é confirmado com linha válida, barcode, valor, venciment
 });
 test('requisição bancária usa mTLS, bearer e Client ID no gateway oficial sem seguir redirecionamentos',async()=>{
  const old=https.request,p=buildPayload(bill,customer,'00000001');
- https.request=(url,options,callback)=>{assert.equal(url,BANK_URL);assert.equal(options.cert,'CERT');assert.equal(options.key,'KEY');assert.equal(options.headers['x-itau-apikey'],'CLIENT');assert.equal(options.headers.Authorization,'Bearer ACCESS');const req=new EventEmitter();req.setTimeout=()=>{};req.end=body=>{assert.deepEqual(JSON.parse(body),p);const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);queueMicrotask(()=>{res.emit('data',JSON.stringify(fixture(p)));res.emit('end');});};return req;};
+ https.request=(url,options,callback)=>{assert.equal(url,BANK_URL);assert.equal(options.cert,'CERT');assert.equal(options.key,'KEY');assert.equal(options.headers['x-itau-apikey'],'CLIENT');assert.equal(options.headers.Authorization,'Bearer ACCESS');const req=new EventEmitter();req.setTimeout=()=>{};req.end=body=>{assert.deepEqual(JSON.parse(body),{data:p});const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);queueMicrotask(()=>{res.emit('data',JSON.stringify(fixture(p)));res.emit('end');});};return req;};
  try{assert.equal((await bankRequest(p,'ACCESS',{ITAU_CERTIFICATE:'CERT',ITAU_PRIVATE_KEY:'KEY',ITAU_CLIENT_ID:'CLIENT'})).etapa,'validacao');}finally{https.request=old;}
 });
 test('acesso exige sessão real e perfil aprovado; permissão financeira genérica não libera cobrança',async()=>{
@@ -56,7 +56,7 @@ test('teste isolado exige autorização, força validação e não grava estado 
   return {ok:true,json:async()=>data};
  };
  https.request=(url,options,callback)=>{assert.equal(url,BANK_URL);const req=new EventEmitter();req.setTimeout=()=>{};req.end=body=>{
-  const payload=JSON.parse(body);calls++;assert.equal(payload.etapa_processo_boleto,'validacao');assert.equal(payload.dado_boleto.codigo_carteira,'109');assert.equal(payload.dado_boleto.dados_individuais_boleto[0].valor_titulo,'10.00');
+  const envelope=JSON.parse(body);assert.deepEqual(Object.keys(envelope),['data']);const payload=envelope.data;calls++;assert.equal(payload.etapa_processo_boleto,'validacao');assert.equal(payload.dado_boleto.codigo_carteira,'109');assert.equal(payload.dado_boleto.dados_individuais_boleto[0].valor_titulo,'10.00');
   const res=new EventEmitter();res.statusCode=200;res.setEncoding=()=>{};callback(res);queueMicrotask(()=>{res.emit('data',JSON.stringify(fixture(payload)));res.emit('end');});
  };return req;};
  try{
@@ -64,4 +64,9 @@ test('teste isolado exige autorização, força validação e não grava estado 
   const result=await collectionsRequest({headers:{authorization:'Bearer token'}},{action:'TEST_VALIDATE',etapa:'efetivacao',valor:99999},async()=>({access_token:'TEST'}));
   assert.equal(result.test,true);assert.equal(result.registered,false);assert.equal(result.receipt.etapa,'validacao');assert.equal(calls,1);
  }finally{globalThis.fetch=oldFetch;https.request=oldRequest;}
+});
+test('recusa bancária informa campos sem expor valores ou mensagens sensíveis',async()=>{
+ const old=https.request,p=buildPayload(bill,customer,'00000001');
+ https.request=(url,options,callback)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.end=()=>{const res=new EventEmitter();res.statusCode=400;res.setEncoding=()=>{};callback(res);queueMicrotask(()=>{res.emit('data',JSON.stringify({mensagem:'SECRET-TOKEN',campos:[{campo:'dado_boleto.valor',valor:'PRIVATE-DOCUMENT'},{campo:'malicious SECRET-TOKEN'}]}));res.emit('end');});};return req;};
+ try{await assert.rejects(bankRequest(p,'ACCESS',{}),e=>{assert.match(e.publicMessage,/dado_boleto.valor/);assert.doesNotMatch(e.publicMessage,/SECRET|PRIVATE|malicious/);return true;});}finally{https.request=old;}
 });

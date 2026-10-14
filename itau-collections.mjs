@@ -55,7 +55,7 @@ export function normalizeReceipt(body,payload){
  return {idCobranca:data.id_boleto||null,nossoNumero:expected.numero_nosso_numero,linhaDigitavel:parsed.line,codigoBarras:parsed.barcode,valor:Number(expected.valor_titulo),vencimento:expected.data_vencimento,carteira:'109',etapa:payload.etapa_processo_boleto,status:payload.etapa_processo_boleto==='efetivacao'?'REGISTRADO':'VALIDADO — SEM REGISTRO',confirmadoEm:new Date().toISOString()};
 }
 export function bankRequest(payload,accessToken,config=process.env){return new Promise((resolve,reject)=>{
- const body=JSON.stringify(payload),correlationId=crypto.randomUUID();
+ const body=JSON.stringify({data:payload}),correlationId=crypto.randomUUID();
  const r=https.request(BANK_URL,{method:'POST',cert:config.ITAU_CERTIFICATE?.replaceAll('\\n','\n'),key:config.ITAU_PRIVATE_KEY?.replaceAll('\\n','\n'),minVersion:'TLSv1.2',headers:{Authorization:'Bearer '+accessToken,'x-itau-apikey':config.ITAU_CLIENT_ID?.trim(),'x-itau-correlationID':correlationId,'x-itau-flowID':crypto.randomUUID(),'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},response=>{
   let raw='';response.setEncoding('utf8');response.on('data',chunk=>{raw+=chunk;if(raw.length>1000000)response.destroy(error('Retorno do banco excedeu o limite.',502,'BANK_RESULT_UNKNOWN'));});response.on('error',reject);
   response.on('end',()=>{
