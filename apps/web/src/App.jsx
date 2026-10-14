@@ -836,7 +836,7 @@ export default function App() {
     if(workflowBusy.current)throw new Error('Aguarde a operação atual.');
     workflowBusy.current=true;clearTimeout(cloudTimer.current);
     try{
-      await saveCloudState(data);
+      if(body.action!=='TEST_VALIDATE')await saveCloudState(data);
       const {data:session,error}=await supabase.auth.getSession();
       if(error||!session?.session?.access_token)throw new Error('Entre novamente no Forte Vendas.');
       const response=await fetch('https://forte-itau-api.onrender.com/api/itau/collections',{method:'POST',headers:{Authorization:'Bearer '+session.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
@@ -8188,6 +8188,17 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
   const [bankBusy,setBankBusy]=useState(false);
   const [bankMessage,setBankMessage]=useState('');
   const [validated,setValidated]=useState({});
+  async function testItau(){
+    if(bankBusy)return;
+    setBankBusy(true);setBankMessage('Validando teste de R$ 10,00 no Itaú, sem registrar cobrança…');
+    try{
+      if(!onBankAction)throw new Error('Conector Itaú indisponível.');
+      const result=await onBankAction({action:'TEST_VALIDATE'});
+      if(!result.ok||result.registered!==false||result.receipt?.etapa!=='validacao')throw new Error('Resultado do teste não confirmado.');
+      setBankMessage('Itaú confirmou o teste de R$ 10,00 na carteira 109. Nenhuma cobrança foi registrada.');
+    }catch(e){setBankMessage(e.message||'Teste não confirmado.');}
+    finally{setBankBusy(false);}
+  }
   async function bankAction(b,action){
     if(bankBusy)return;
     if(action==='REGISTER'&&!confirm(`Registrar a cobrança no Itaú: ${money(b.valor)} • vencimento ${formatDateBR(b.vencimento)} • ${b.cliente}?`))return;
@@ -8250,6 +8261,7 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
   }
   return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={()=>{if(!bankBusy)onClose();}} wide>
     <p role="status">{bankMessage}</p>
+    <div className="transportBox"><b>TESTE DA INTEGRAÇÃO</b><p className="note">SÉCULUS CONSTRUTORA • R$ 10,00 • carteira 109. Apenas validação: não cria venda, título, envio ou cobrança registrada.</p><button type="button" disabled={bankBusy} onClick={testItau}>TESTAR ITAÚ SEM REGISTRAR COBRANÇA</button></div>
     <div className="transportBox"><p className="note">ESTA TELA PERMITE EMITIR, ENVIAR E ALTERAR BOLETOS DA PRÓPRIA VENDA. A ALTERAÇÃO É LIBERADA NO DIA SEGUINTE À EMISSÃO, CONFORME O FLUXO ATUAL DO ITAÚ. NÃO EXIBE A FRANCESINHA DETALHADA.</p><div className="actions"><button className="ghost dark" onClick={() => relatorio("A VENCER")}>RELATÓRIO A VENCER</button><button className="ghost dark" onClick={() => relatorio("VENCIDOS")}>RELATÓRIO VENCIDOS</button></div></div>
     <h3>NOVA EMISSÃO</h3><div className="miniGrid">
       <Field label="VENDA"><select value={vendaId} onChange={(e) => setVendaId(e.target.value)}><option value="">SELECIONE...</option>{vendas.slice().reverse().map((v) => <option key={v.id} value={v.id}>{v.numeroVenda} • {customerName(v, data.clientes || []) || "CLIENTE"} • {money(v.total || v.valorTotal || v.valor)}</option>)}</select></Field>

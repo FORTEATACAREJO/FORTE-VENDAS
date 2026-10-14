@@ -68,6 +68,15 @@ export async function collectionsRequest(req,input,requestToken){
  async function cloud(route,body){const r=await fetch(SUPABASE_URL+route,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});if(!r.ok)throw error('Não foi possível confirmar os dados da cobrança no servidor.',r.status===401?401:409,'BILLING_STATE');return r.json();}
  const user=await cloud('/auth/v1/user');if(!user.id)throw error('Sessão inválida.',401,'AUTH_REQUIRED');
  const profiles=await cloud('/rest/v1/fc_perfis?select=*&user_id=eq.'+encodeURIComponent(user.id));const profile=profiles[0];if(!allowProfile(profile))throw error('Seu perfil não tem permissão de emissão Itaú.',403,'BILLING_FORBIDDEN');
+ // An isolated validation fixture never creates a sale, a title or a number reservation.
+ // Its bank stage, amount and payer are server-controlled, regardless of client input.
+ if(input.action==='TEST_VALIDATE'){
+  const bill={id:'TESTE-INTEGRACAO',numeroVenda:'TESTE',valor:10,vencimento:today(),jurosMes:0,multa:0};
+  const customer={nome:'SECULUS CONSTRUTORA LTDA',documento:'03698525000130',endereco:'RUA ARTHUR BERNARDES 455',bairro:'CENTRO',cidade:'COROMANDEL',uf:'MG',cep:'38550026'};
+  const payload=buildPayload(bill,customer,'00000001','validacao');
+  const token=await requestToken();
+  return {ok:true,registered:false,test:true,receipt:await bankRequest(payload,token.access_token)};
+ }
  if(!['VALIDATE','REGISTER','STATUS'].includes(input.action)||typeof input.boletoId!=='string'||input.boletoId.length>100)throw error('Operação de cobrança inválida.');
  if(input.action==='STATUS')return cloud('/rest/v1/fc_itau_ledger?select=receipt,status,boleto_id&boleto_id=eq.'+encodeURIComponent(input.boletoId)+'&empresa_id=eq.'+profile.empresa_id);
  const rows=await cloud('/rest/v1/fc_app_state?select=estado,versao&empresa_id=eq.'+profile.empresa_id);if(!rows[0]?.estado)throw error('Atualize a base antes de emitir.');
