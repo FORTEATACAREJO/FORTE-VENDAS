@@ -21,11 +21,17 @@ Chave privada, certificado, Client Secret e Access Token permanecem no servidor.
 
 Uma reserva durável bloqueia repetição de registro após timeout, erro ou reinício. Resultado desconhecido exige conferência. A emissão registra o título e o evento sem quitar contas a receber, somar caixa ou alterar estoque.
 
+## PDF do teste isolado
+
+Após uma resposta bancária validada, a tela oferece BAIXAR PDF DO TESTE — NÃO PAGAR. O documento identifica valor, vencimento, pagador, carteira, beneficiário e referência da validação. Não imprime linha digitável ou código de barras e não representa cobrança registrada. O gerador rejeita retornos incompletos, inconsistentes e efetivações. O teste de renderização usa somente uma fixture local marcada como QA; não é evidência de nova validação ao vivo.
+
+A execução bancária exige sessão real conectada. Na preparação desta atualização, a sessão do navegador estava desconectada; nenhuma nova validação ou efetivação foi executada.
+
 ## Pendências para emissão operacional
 
 1. Conferir no Itaú o próximo nosso número livre da carteira 109 e reconciliar a sequência existente antes de habilitar registro efetivo.
 2. Completar os cadastros comerciais: CEP, UF e demais dados necessários. As vendas atuais de carga direta consultadas têm preço zero e não são aptas para emissão.
 3. Testar o fluxo completo de uma venda real e sua gravação, separadamente do teste isolado.
-4. Implementar/conferir o PDF de boleto, alterações e conciliação de pagamento. O conector atual não executa envio por WhatsApp/e-mail.
+4. Implementar/conferir o PDF do boleto registrado, alterações e conciliação de pagamento. O conector atual não executa envio por WhatsApp/e-mail.
 
 A validação bancária aprovada não equivale a uma cobrança registrada ou à operação comercial completa.

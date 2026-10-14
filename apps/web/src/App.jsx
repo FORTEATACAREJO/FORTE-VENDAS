@@ -1,4 +1,5 @@
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
+import {createItauTestPDF} from './itau-test-pdf.js';
 import {registryConflict} from "./registry-identity.js";
 import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
@@ -8189,13 +8190,17 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
   const [bankBusy,setBankBusy]=useState(false);
   const [bankMessage,setBankMessage]=useState('');
   const [validated,setValidated]=useState({});
+  const [itauTestResult,setItauTestResult]=useState(null);
   async function testItau(){
     if(bankBusy)return;
+    setItauTestResult(null);
     setBankBusy(true);setBankMessage('Validando teste de R$ 10,00 no Itaú, sem registrar cobrança…');
     try{
       if(!onBankAction)throw new Error('Conector Itaú indisponível.');
       const result=await onBankAction({action:'TEST_VALIDATE'});
       if(!result.ok||result.registered!==false||result.receipt?.etapa!=='validacao')throw new Error('Resultado do teste não confirmado.');
+      createItauTestPDF(result); // Reject an incomplete bank result before offering the PDF.
+      setItauTestResult(result);
       setBankMessage('Itaú confirmou o teste de R$ 10,00 na carteira 109. Nenhuma cobrança foi registrada.');
     }catch(e){setBankMessage(e.message||'Teste não confirmado.');}
     finally{setBankBusy(false);}
@@ -8262,7 +8267,7 @@ function EmissorBoletosVenda({ data, onChange, canal, currentUser, onClose, init
   }
   return <Modal title={`EMISSÃO DE BOLETOS — ${canal}`} onClose={()=>{if(!bankBusy)onClose();}} wide>
     <p role="status">{bankMessage}</p>
-    <div className="transportBox"><b>TESTE DA INTEGRAÇÃO</b><p className="note">SÉCULUS CONSTRUTORA • R$ 10,00 • carteira 109. Apenas validação: não cria venda, título, envio ou cobrança registrada.</p><button type="button" disabled={bankBusy} onClick={testItau}>TESTAR ITAÚ SEM REGISTRAR COBRANÇA</button></div>
+    <div className="transportBox"><b>TESTE DA INTEGRAÇÃO</b><p className="note">SÉCULUS CONSTRUTORA • R$ 10,00 • carteira 109. Apenas validação: não cria venda, título, envio ou cobrança registrada.</p><button type="button" disabled={bankBusy} onClick={testItau}>TESTAR ITAÚ SEM REGISTRAR COBRANÇA</button>{itauTestResult && <button type="button" disabled={bankBusy} onClick={()=>createItauTestPDF(itauTestResult).save('TESTE-ITAU-SEM-REGISTRO.pdf')}>BAIXAR PDF DO TESTE — NÃO PAGAR</button>}</div>
     <div className="transportBox"><p className="note">ESTA TELA PERMITE EMITIR, ENVIAR E ALTERAR BOLETOS DA PRÓPRIA VENDA. A ALTERAÇÃO É LIBERADA NO DIA SEGUINTE À EMISSÃO, CONFORME O FLUXO ATUAL DO ITAÚ. NÃO EXIBE A FRANCESINHA DETALHADA.</p><div className="actions"><button className="ghost dark" onClick={() => relatorio("A VENCER")}>RELATÓRIO A VENCER</button><button className="ghost dark" onClick={() => relatorio("VENCIDOS")}>RELATÓRIO VENCIDOS</button></div></div>
     <h3>NOVA EMISSÃO</h3><div className="miniGrid">
       <Field label="VENDA"><select value={vendaId} onChange={(e) => setVendaId(e.target.value)}><option value="">SELECIONE...</option>{vendas.slice().reverse().map((v) => <option key={v.id} value={v.id}>{v.numeroVenda} • {customerName(v, data.clientes || []) || "CLIENTE"} • {money(v.total || v.valorTotal || v.valor)}</option>)}</select></Field>
