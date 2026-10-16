@@ -9,7 +9,11 @@ const moeda=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"B
 const dataBR=v=>v?new Date(String(v).length===10?v+"T12:00:00":v).toLocaleString("pt-BR"):"-";
 const soma=rows=>rows.reduce((a,x)=>a+Number(x.valor||0),0);
 const escapeCsv=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
-export default function FinanceiroHub({data,onChange,currentUser}){
+export default function FinanceiroMasterGate(props){
+ if(props.currentUser?.master!==true)return <section className="card" role="alert">Financeiro restrito ao perfil Master dentro do Forte Vendas.</section>;
+ return <FinanceiroHub {...props}/>;
+}
+function FinanceiroHub({data,onChange,currentUser}){
  const [aba,setAba]=useState("FECHAMENTOS");
  const [dia,setDia]=useState(new Date().toISOString().slice(0,10));
  const [caixaId,setCaixaId]=useState("");
