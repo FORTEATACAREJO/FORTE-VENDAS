@@ -32,7 +32,9 @@ Deno.serve(async(req)=>{
    if(!response.ok)throw new Error(`Leitura por IA indisponível (${response.status}). Preencha manualmente.`);
    const result=await response.json(),output=result.output_text||result.output?.flatMap((x:any)=>x.content||[]).find((x:any)=>x.type==='output_text')?.text||'';const fields=JSON.parse(output.replace(/^```(?:json)?\s*|\s*```$/g,''));return Response.json({preview:fields,filename:b.filename,requiresReview:true},{headers:cors});
   }
-  const {data:row,error:loadError}=await client.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(loadError||!row)throw new Error('Base não encontrada. Atualize os dados.');
+  const permission=await client.rpc('fc_operacao_autorizada');if(permission.error||permission.data!==true)return Response.json({error:'Aplicativo sem aprovação operacional.'},{status:403,headers:cors});
+  const stateClient=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const {data:row,error:loadError}=await stateClient.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(loadError||!row)throw new Error('Base não encontrada. Atualize os dados.');
   if(b.action==='DRIVER_REPORT_DETAILS'){if(!mayReadDriverPayment(p))return Response.json({allowDriverPayment:false},{headers:cors});const remote=await freteBridge('DRIVER_DETAILS',b.cargaId);return Response.json({allowDriverPayment:true,payment:remote.payment},{headers:cors});}
   if(b.action==='DOCUMENT_ADD'){
    if(!String(b.path||'').startsWith(p.empresa_id+'/'))throw new Error('Arquivo de outra empresa.');
@@ -42,7 +44,7 @@ Deno.serve(async(req)=>{
   if(b.action==='IMPORT_DRIVERS'){const remote=await freteBridge('LIST_DRIVERS');b.action='DRIVERS_IMPORTED';b.internalDrivers=remote.motoristas;}
   if(b.action==='PUBLISH_FRETE'){const c=(row.estado.cargas||[]).find(c=>c.id===b.cargaId&&c.status!=='CANCELADA');if(!c||palletReleaseNeeded(c))throw new Error('Carga inválida ou liberação de pallets pendente.');const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
   const out=applyWorkflow(row.estado,b,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
-  if(!out.replayed){const {error}=await client.rpc('fc_salvar_estado',{p_estado:out.state,p_versao:row.versao});if(error){if(error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
+  if(!out.replayed){const {data:saved,error}=await stateClient.rpc('fc_gravar_workflow',{p_empresa:p.empresa_id,p_actor:user.id,p_versao:row.versao,p_estado:out.state});if(error||saved!==row.versao+1){if(!error||error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
   let warning=out.result.warning;
   if(b.action==='DOCUMENT_VALIDATE'){
     const doc=(out.state.documentos||[]).find(d=>d.id===b.documentoId);

@@ -1,0 +1,17 @@
+name: Financial access and Frete integration review
+on:
+  pull_request:
+    paths: ['apps/**', 'supabase/**', 'integrations/**', 'tests/**', 'checks/**', 'package*.json', '.github/workflows/financial-frete-review.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run build

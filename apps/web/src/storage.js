@@ -1,3 +1,4 @@
+import {operationalCache} from './financial-privacy.js';
 const KEY = "forte-cargas-v52-data";
 const ARRAYS = [
   "usuarios",
@@ -194,7 +195,7 @@ export function loadData(fallback) {
   }
 }
 export function saveData(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+  localStorage.setItem(KEY, JSON.stringify(operationalCache(data)));
 }
 export function resetData() {
   localStorage.removeItem(KEY);
