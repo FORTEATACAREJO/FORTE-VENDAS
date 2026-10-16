@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createCloudStateStore} from '../apps/web/src/cloud-state.js';
 function fixture(initial={estado:{n:0},versao:4}){
  const calls=[],errors=[];let loaded=initial, behavior;
- const client={from(){return {select(){return this},eq(){return this},async maybeSingle(){if(loaded instanceof Error)throw loaded;return {data:loaded,error:null}}}},async rpc(name,args){calls.push(structuredClone(args));if(behavior)return behavior(name,args);return {data:{estado:args.p_estado,versao:args.p_versao===null?1:args.p_versao+1}}}};
+ const client={from(){return {select(){return this},eq(){return this},async maybeSingle(){if(loaded instanceof Error)throw loaded;return {data:loaded,error:null}}}},async rpc(name,args){if(name==='fc_carregar_estado'){if(loaded instanceof Error)throw loaded;return {data:loaded,error:null}}calls.push(structuredClone(args));if(behavior)return behavior(name,args);return {data:{estado:args.p_estado,versao:args.p_versao===null?1:args.p_versao+1}}}};
  const store=createCloudStateStore(client,()=>({profile:{empresa_id:'TEST'}}),(error,state)=>errors.push({error,state}));
  return {store,calls,errors,setLoaded(v){loaded=v},setBehavior(v){behavior=v}};
 }

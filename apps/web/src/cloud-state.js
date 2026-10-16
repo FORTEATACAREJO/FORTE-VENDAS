@@ -15,7 +15,7 @@ export function createCloudStateStore(client, context, onError = () => {}) {
   async function load() {
     const ctx=context(); if(!ctx?.profile?.empresa_id)throw new Error('Entre no sistema antes de atualizar a base.');
     let result;
-    try { result=await client.from('fc_app_state').select('estado,versao').eq('empresa_id',ctx.profile.empresa_id).maybeSingle(); }
+    try { result=await client.rpc('fc_carregar_estado'); }
     catch(error) { throw fail(error); }
     if(result.error)throw fail(result.error);
     version=result.data ? Number(result.data.versao) : null;
@@ -30,7 +30,7 @@ export function createCloudStateStore(client, context, onError = () => {}) {
       if(version===undefined)throw fail(new Error('Aguarde o carregamento dos dados antes de gravar.'),desired);
       if(JSON.stringify(desired)===JSON.stringify(accepted))return copy(accepted);
       let result;
-      try { result=await client.rpc('fc_salvar_estado',{p_estado:desired,p_versao:version}); }
+      try { result=await client.rpc('fc_salvar_estado_projetado',{p_estado:desired,p_versao:version}); }
       catch(error) { throw fail(error,desired); }
       if(result.error)throw fail(result.error,desired);
       const receipt=result.data;

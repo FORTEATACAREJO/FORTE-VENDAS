@@ -865,7 +865,7 @@ export default function App() {
     return MODULE_GROUPS.find((g) => g.modules.includes(screen))?.id || "";
   };
   const canAccessGroup = (groupId, action = "visualizar") => {
-    if (groupId === "financeiro") return isMaster;
+    if (groupId === "financeiro") return isMaster && cloudReady.current;
     if (isAdmin) return true;
     const permissions = currentUser?.permissoes || {};
     if (Array.isArray(permissions)) {
