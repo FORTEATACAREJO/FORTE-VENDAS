@@ -14,6 +14,7 @@ export async function loadCloudState(){
  if(!cloudStore)return null;
  try{const r=await supabase.functions.invoke('sync-frete-drivers',{body:{}});if(r.error||r.data?.error)window.dispatchEvent(new CustomEvent('forte-driver-status',{detail:'Consulta do Forte Frete indisponível. Os últimos dados foram preservados.'}));}
  catch{window.dispatchEvent(new CustomEvent('forte-driver-status',{detail:'Consulta do Forte Frete indisponível. Os últimos dados foram preservados.'}));}
+ try{const r=await supabase.functions.invoke('sync-frete-acceptances',{body:{}});if(r.error||r.data?.error)window.dispatchEvent(new CustomEvent('forte-driver-status',{detail:'Integração das cargas pendente. Dados anteriores preservados.'}));}catch{}
  return cloudStore.load();
 }
 export async function saveCloudState(estado){return cloudStore?cloudStore.save(estado):estado}
