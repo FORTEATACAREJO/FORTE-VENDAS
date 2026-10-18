@@ -21,11 +21,11 @@ Deno.serve(async req=>{
    const next=mergeOperation(row.estado,snapshot);if(JSON.stringify(next)===JSON.stringify(row.estado))break;
    const saved=await admin.from('fc_app_state').update({estado:next,versao:row.versao+1}).eq('empresa_id',p.empresa_id).eq('versao',row.versao).select('versao').maybeSingle();if(saved.error)throw saved.error;if(saved.data)break;if(attempt===2)throw Error('Outra atualização ocorreu. Tente novamente.');
   }
-  const remote=await call('LIST_ACCEPTANCES');const started=Date.now();let received=0;const pending=[];
+  const remote=await call('LIST_ACCEPTANCES');const started=Date.now();let received=0;const pending=[],confirmedEvents=[];
   for(const event of (remote.events||[]).slice(0,10)){if(Date.now()-started>40000){pending.push(event.id);continue}try{
    const {error}=await admin.rpc('fc_receber_aceite_frete',{p_empresa:p.empresa_id,p_actor:user.id,p_evento:event.id,p_payload:event.payload});if(error)throw error;
    // A failed acknowledgement is retried; the receiver is idempotent by external event ID.
-   await call('CONFIRM_ACCEPTANCE',{eventId:event.id});received++;
+   await call('CONFIRM_ACCEPTANCE',{eventId:event.id});confirmedEvents.push(event.id);received++;
   }catch{pending.push(event.id)}}
   const paymentPending=[];
   const {data:paymentRow,error:paymentError}=await admin.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(paymentError)throw paymentError;
@@ -40,6 +40,6 @@ Deno.serve(async req=>{
     }
    }catch{paymentPending.push(item.cargaId);}
   }
-  return Response.json({ok:true,received,pending,paymentPending,message:pending.length||paymentPending.length?'Parte das solicitações aguarda nova sincronização.':'Sincronização do lote concluída. Confira os pedidos que aguardam vínculo.'},{headers});
+  return Response.json({ok:true,received,confirmedEvents,pending,paymentPending,message:pending.length||paymentPending.length?'Parte das solicitações aguarda nova sincronização.':'Sincronização do lote concluída. Confira os pedidos que aguardam vínculo.'},{headers});
  }catch{return Response.json({error:'Não foi possível sincronizar as solicitações. Nenhum pedido foi inventado.'},{status:502,headers})}
 });
