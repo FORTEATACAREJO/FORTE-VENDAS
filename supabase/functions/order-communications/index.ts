@@ -1,3 +1,4 @@
+import {supplierDispatchCapacity} from '../orders-workflow/capacity.mjs';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {jsPDF} from 'npm:jspdf@3.0.2';
 import {templatePayload,validSignature,applyStatuses} from './provider.mjs';
@@ -41,6 +42,7 @@ Deno.serve(async req=>{
   const body=await req.json();if(body.action!=='DISPATCH')throw new Error('Ação inválida.');const gmailTenant=await admin().from('gmail_hub_config').select('empresa_id').eq('id',true).maybeSingle();if(p.empresa_id!==env('WHATSAPP_TENANT_ID')&&p.empresa_id!==gmailTenant.data?.empresa_id)return Response.json({error:'Integração de mensagens ainda não configurada para esta empresa.'},{status:409,headers:cors});
   const db=admin();let sent=0,blocked=0;const initial=await rowFor(db,p.empresa_id);const ids=(initial.estado.comunicacoes||[]).filter((j:any)=>j.state==='QUEUED'||j.state==='BLOCKED'&&j.reason==='INTEGRAÇÃO NÃO CONFIGURADA').slice(0,10).map((j:any)=>j.id);
   for(const id of ids){const row=await rowFor(db,p.empresa_id),j=row.estado.comunicacoes.find((j:any)=>j.id===id);if(!j||!['QUEUED','BLOCKED'].includes(j.state))continue;const customer=row.estado.clientes?.find((c:any)=>c.id===j.clienteId);if(j.audience==='CLIENTE'&&customer?.whatsappAutorizado!==true){j.state='BLOCKED';j.reason='AUTORIZAÇÃO DO CLIENTE PENDENTE';await persist(db,p.empresa_id,row);blocked++;continue;}
+   if(j.audience==='FORNECEDOR'){try{supplierDispatchCapacity(row.estado,j);}catch(e){j.state='BLOCKED';j.reason='CAPACIDADE: '+e.message;await persist(db,p.empresa_id,row);blocked++;continue;}}
    const permittedTenant=j.canal==='EMAIL'&&j.audience==='FORNECEDOR'?p.empresa_id===gmailTenant.data?.empresa_id:p.empresa_id===env('WHATSAPP_TENANT_ID');const configured=permittedTenant&&(j.canal==='EMAIL'?j.audience==='FORNECEDOR'?await gmailConfigured():env('RESEND_API_KEY')&&env('ORDERS_EMAIL_FROM'):env('WHATSAPP_ACCESS_TOKEN')&&env('WHATSAPP_PHONE_ID')&&env('WHATSAPP_TEMPLATE_'+j.kind));if(!configured){j.state='BLOCKED';j.reason='INTEGRAÇÃO NÃO CONFIGURADA';await persist(db,p.empresa_id,row);blocked++;continue;}
    j.state='SENDING';j.attemptAt=new Date().toISOString();await persist(db,p.empresa_id,row);let providerId='',failure='';try{providerId=await sendJob(j);}catch(e){failure=e.message;}
    // Claim before contacting the provider; a timeout or interrupted invocation is never retried automatically.

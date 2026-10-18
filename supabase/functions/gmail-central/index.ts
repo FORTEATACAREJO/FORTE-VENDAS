@@ -1,3 +1,4 @@
+import {supplierDispatchCapacity} from '../orders-workflow/capacity.mjs';
 import {jsPDF} from 'npm:jspdf@4.2.1';
 import {orderMime} from './mime.mjs';
 import {createClient} from 'npm:@supabase/supabase-js@2.57.4';
@@ -66,6 +67,7 @@ async function sendOrder(id:string){
  const row=ok(await db.from('fc_app_state').select('estado').eq('empresa_id',c.empresa_id).single()),j=(row.estado.comunicacoes||[]).find((j:any)=>j.id===id);
  if(!j||j.canal!=='EMAIL'||j.audience!=='FORNECEDOR'||j.state!=='SENDING')throw Error('PEDIDO_NAO_AUTORIZADO_PARA_ENVIO');
  const old=ok(await db.from('gmail_hub_outbox').select('*').eq('job_id',id).maybeSingle());if(old?.status==='SENT')return {id:old.message_id,threadId:old.thread_id};if(old)throw Error('ENVIO_ANTERIOR_NAO_CONFIRMADO');
+ supplierDispatchCapacity(row.estado,j);
  const t=await token(c),p=await api(t,'/profile');if(p.emailAddress.toLowerCase()!==CENTRAL_EMAIL)throw Error('CONTA_GOOGLE_DIVERGENTE');
  const bytes=supplierPDF(j),raw=orderMime(j,btoa(Array.from(bytes).map(n=>String.fromCharCode(n)).join('')));
  ok(await db.from('gmail_hub_outbox').insert({job_id:id,empresa_id:c.empresa_id,status:'SENDING'}));

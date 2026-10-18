@@ -1,3 +1,4 @@
+import {capacityCheck,supplierDispatchCapacity} from '../supabase/functions/orders-workflow/capacity.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {applyWorkflow,supplierProducts,documentStatus,isResaleProduct} from '../supabase/functions/orders-workflow/domain.mjs';
@@ -29,14 +30,54 @@ test('entrega exige finalização real e cobrança real, não fila de boleto',()
 test('perfil motorista, cadastro pendente e senha temporária não operam',()=>{for(const patch of [{perfil:'MOTORISTA'},{status_aprovacao:'PENDENTE'},{trocar_senha:true}])assert.throws(()=>execute(base(),supplier,{...p,...patch}),/aprovado/);});
 test('arquivo de outra empresa não entra no dossiê',()=>assert.throws(()=>execute(confirmed(),{action:'DOCUMENT_ADD',cargaId:confirmed().cargas[0].id,categoria:'XML NF',path:'outra/file.xml',hash:'a'.repeat(64),filename:'NF.xml'}),/não localizada|outra empresa/));
 
-test('pallets usam quantidade cadastrada, arredondam automaticamente e ignoram valor manual',()=>{const s=execute(base(),{...supplier,regraPallets:'Com pallets',palletQuantidade:999,itens:[{produtoId:'p',qtd:101}]}).state;assert.equal(s.comprasFornecedor[0].palletQuantidade,3);assert.equal(s.comprasFornecedor[0].nfPalletsAplica,true);const missing=base();delete missing.produtos[0].palletQtd;assert.throws(()=>execute(missing,{...supplier,regraPallets:'Com pallets'}),/quantidade por pallet/);});
+test('pallets usam quantidade cadastrada, arredondam automaticamente e ignoram valor manual',()=>{const s=execute(base(),{...supplier,regraPallets:'Com pallets',palletQuantidade:999,capacityConfirmation:capacityCheck(base().motoristas[0],5050).snapshot,itens:[{produtoId:'p',qtd:101}]}).state;assert.equal(s.comprasFornecedor[0].palletQuantidade,3);assert.equal(s.comprasFornecedor[0].nfPalletsAplica,true);const missing=base();delete missing.produtos[0].palletQtd;assert.throws(()=>execute(missing,{...supplier,regraPallets:'Com pallets'}),/quantidade por pallet/);});
 test('custo vem exclusivamente do produto e falta de preço negociado bloqueia inclusive administrador',()=>{const s=base();s.produtos[0].precoNegociado=25;assert.equal(execute(s,supplier).state.comprasFornecedor[0].itens[0].custoUnitario,25);delete s.produtos[0].precoNegociado;assert.throws(()=>execute(s,supplier),/preço negociado/);assert.throws(()=>execute(base(),{...supplier,itens:[{produtoId:'p',qtd:800,custoUnitario:1}]}),/Preço negociado mudou/);});
 
 import {filterOrders,driverSnapshot,mayReadDriverPayment} from '../supabase/functions/orders-workflow/complements.mjs';
 test('CSN Direto e Fibra usam preços próprios sem substituição por preço padrão',()=>{const s=base();Object.assign(s.produtos[0],{precoNegociadoCsnDireto:21,precoNegociadoCsnFibra:24});for(const [mode,cost] of [['PADRAO',22],['CSN_DIRETO',21],['CSN_FIBRA',24]])assert.equal(execute(s,{...supplier,modalidadeCompra:mode}).state.comprasFornecedor[0].itens[0].custoUnitario,cost);delete s.produtos[0].precoNegociadoCsnFibra;assert.throws(()=>execute(s,{...supplier,modalidadeCompra:'CSN_FIBRA'}),/preço negociado/);assert.throws(()=>execute(s,{...supplier,modalidadeCompra:'INVALIDO'}),/inválida/);assert.throws(()=>execute(s,{...supplier,fornecedorId:'g',modalidadeCompra:'CSN_DIRETO',itens:[{produtoId:'q',qtd:10}]}),/somente para CSN/);});
 test('800 sacos de 50 kg calculam 20 pallets de 40; 801 e valores inválidos bloqueiam',()=>{const s=base();s.produtos[0].palletQtd=40;const o=execute(s,{...supplier,regraPallets:'Com pallets'}).state.comprasFornecedor[0];assert.equal(o.pesoKg,40000);assert.equal(o.palletQuantidade,20);for(const qtd of [801,'abc',NaN,Infinity,0,-1,1.1])assert.throws(()=>execute(s,{...supplier,itens:[{produtoId:'p',qtd}]}));});
 test('ajuste manual de pallets exige justificativa e preserva sugestão',()=>{assert.throws(()=>execute(base(),{...supplier,regraPallets:'Com pallets',palletQuantidadeAjustada:20}),/justificativa/);const o=execute(base(),{...supplier,regraPallets:'Com pallets',palletQuantidadeAjustada:20,justificativaPallets:'Fornecedor exige embalagens adicionais'}).state.comprasFornecedor[0];assert.equal(o.palletQuantidade,20);assert.equal(o.palletQuantidadeSugerida,16);assert.throws(()=>execute(base(),{...supplier,palletQuantidadeAjustada:1,justificativaPallets:'x'}),/quantidade zero/);});
-test('edição conserva pedido e dossiê, guarda histórico e invalida envio pendente',()=>{let s=execute(base(),supplier).state;const o=s.comprasFornecedor[0],c=s.cargas[0];s.comunicacoes=[{id:'queue',compraFornecedorId:o.id,state:'QUEUED'}];s=execute(s,{...supplier,action:'SUPPLIER_EDIT',id:o.id,motivo:'Ajuste do destino',destino:'Outra obra',itens:[{produtoId:'p',qtd:760}]}).state;assert.equal(s.comprasFornecedor.length,1);assert.equal(s.cargas.length,1);assert.equal(s.cargas[0].id,c.id);assert.equal(s.comprasFornecedor[0].numero,o.numero);assert.equal(s.comprasFornecedor[0].historico.at(-1).acao,'EDIÇÃO');assert.equal(s.comunicacoes[0].state,'CANCELLED');assert.equal(s.cargas[0].localCarregamento,'Arcos');assert.equal(s.cargas[0].qtdSemDestino,760);s.comunicacoes[0].state='SENT';assert.throws(()=>execute(s,{...supplier,action:'SUPPLIER_EDIT',id:o.id,motivo:'x'}),/não pode ser editado/);});
+test('edição conserva pedido e dossiê, guarda histórico e invalida envio pendente',()=>{let s=execute(base(),supplier).state;const o=s.comprasFornecedor[0],c=s.cargas[0];s.comunicacoes=[{id:'queue',compraFornecedorId:o.id,state:'QUEUED'}];s=execute(s,{...supplier,action:'SUPPLIER_EDIT',id:o.id,motivo:'Ajuste do destino',destino:'Outra obra',capacityConfirmation:capacityCheck(base().motoristas[0],38000).snapshot,itens:[{produtoId:'p',qtd:760}]}).state;assert.equal(s.comprasFornecedor.length,1);assert.equal(s.cargas.length,1);assert.equal(s.cargas[0].id,c.id);assert.equal(s.comprasFornecedor[0].numero,o.numero);assert.equal(s.comprasFornecedor[0].historico.at(-1).acao,'EDIÇÃO');assert.equal(s.comunicacoes[0].state,'CANCELLED');assert.equal(s.cargas[0].localCarregamento,'Arcos');assert.equal(s.cargas[0].qtdSemDestino,760);s.comunicacoes[0].state='SENT';assert.throws(()=>execute(s,{...supplier,action:'SUPPLIER_EDIT',id:o.id,motivo:'x'}),/não pode ser editado/);});
 test('cancelamento preserva registro e auditabilidade, impede envio e novo número reutilizado',()=>{let s=execute(base(),supplier).state;const o=s.comprasFornecedor[0];s.comunicacoes=[{id:'queue',compraFornecedorId:o.id,state:'BLOCKED'}];s=execute(s,{action:'SUPPLIER_CANCEL',id:o.id,motivo:'Compra cancelada'}).state;assert.equal(s.comprasFornecedor[0].status,'CANCELADO');assert.equal(s.comprasFornecedor[0].historico.at(-1).acao,'CANCELAMENTO');assert.equal(s.cargas[0].status,'CANCELADA');assert.equal(s.comunicacoes[0].state,'CANCELLED');assert.throws(()=>execute(s,{action:'SUPPLIER_PREVIEW',id:o.id}),/não localizado/);s=execute(s,supplier).state;assert.notEqual(s.comprasFornecedor[1].numero,o.numero);});
 test('snapshot de identidade preserva dados anteriores sem copiar Pix privado',()=>{const s=base();Object.assign(s.motoristas[0],{cnhNumero:'999',rntrc:'RN1',cpf:'123',chavePix:'PRIVADO'});const out=execute(s,supplier).state;out.motoristas[0].cnhNumero='OUTRO';assert.equal(out.comprasFornecedor[0].motoristaSnapshot.cnhNumero,'999');assert.equal(out.comprasFornecedor[0].motoristaSnapshot.chavePix,undefined);assert.equal(driverSnapshot(s.motoristas[0]).chavePix,undefined);assert.equal(mayReadDriverPayment({...p,perfil:'VENDEDOR_INTERNO',permissoes:{}}),false);assert.equal(mayReadDriverPayment(p),true);});
 test('filtros combinados ignoram acentos e formatação da placa e CPF',()=>{const o=execute(base(),supplier).state.comprasFornecedor[0];assert.equal(filterOrders([o],{query:'ABC-1D23',status:o.status,from:'2026-10-01',to:'2026-10-10'}).length,1);assert.equal(filterOrders([o],{query:'ABC1D23',from:'2026-10-10'}).length,0);assert.equal(filterOrders([o],{query:'Címento CSN'}).length,1);});
+
+
+test('capacidade: abaixo exige Sim específico; igual permite e excesso nunca admite confirmação',()=>{
+ const original=base(),partial={...supplier,itens:[{produtoId:'p',qtd:760}]};
+ for(const capacityConfirmation of [undefined,false,true,'SIM'])assert.throws(()=>execute(original,{...partial,capacityConfirmation}),/Confirme Sim ou Não/);
+ assert.equal(original.cargas.length,0);
+ const check=capacityCheck(original.motoristas[0],38000);assert.equal(check.remaining,2000);
+ const saved=execute(original,{...partial,capacityConfirmation:check.snapshot});
+ assert.equal(saved.state.cargas[0].pesoKg,38000);assert.equal(saved.result.capacidade.actor,p.user_id);
+ assert.equal(execute(base(),supplier).state.cargas[0].pesoKg,40000);
+ assert.throws(()=>execute(base(),{...supplier,itens:[{produtoId:'p',qtd:801}],capacityConfirmation:check.snapshot}),/acima da capacidade/);
+});
+test('capacidade: confirmações antigas não valem após trocar peso, veículo ou capacidade',()=>{
+ const partial={...supplier,itens:[{produtoId:'p',qtd:760}]},capacityConfirmation=capacityCheck(base().motoristas[0],38000).snapshot;
+ assert.throws(()=>execute(base(),{...partial,itens:[{produtoId:'p',qtd:750}],capacityConfirmation}),/Confirme/);
+ for(const patch of [{capacidadeMaximaKg:42000},{freteVeiculoId:'novo-conjunto'},{placa2:'NOVA002'}]){const s=base();Object.assign(s.motoristas[0],patch);assert.throws(()=>execute(s,{...partial,capacityConfirmation}),/Confirme/);}
+});
+test('capacidade: envio reconfere limite atual mesmo após gravar e conferir espelho',()=>{
+ let s=execute(base(),supplier).state;const id=s.comprasFornecedor[0].id;
+ s.fornecedores[0].emailPedidos='fornecedor@example.invalid';s=execute(s,{action:'SUPPLIER_PREVIEW',id}).state;
+ s.motoristas[0].capacidadeMaximaKg=39000;assert.throws(()=>execute(s,{action:'SUPPLIER_SEND',id,canal:'EMAIL'}),/acima da capacidade/);assert.equal(s.comunicacoes?.length||0,0);
+ s.motoristas[0].capacidadeMaximaKg=42000;assert.throws(()=>execute(s,{action:'SUPPLIER_SEND',id,canal:'EMAIL'}),/Confirme/);
+ const capacityConfirmation=capacityCheck(s.motoristas[0],40000).snapshot;
+ s=execute(s,{action:'SUPPLIER_SEND',id,canal:'EMAIL',capacityConfirmation}).state;
+ assert.equal(s.comunicacoes[0].state,'QUEUED');assert.equal(supplierDispatchCapacity(s,s.comunicacoes[0]).remaining,2000);
+ s.motoristas[0].capacidadeMaximaKg=39000;assert.throws(()=>supplierDispatchCapacity(s,s.comunicacoes[0]),/acima da capacidade/);
+ s.motoristas[0].capacidadeMaximaKg=43000;assert.throws(()=>supplierDispatchCapacity(s,s.comunicacoes[0]),/Confirme/);
+});
+test('capacidade: ajuste parcial exige decisão e envio bloqueado volta à fila após nova conferência',()=>{
+ let s=execute(base(),supplier).state;const c=s.cargas[0],o=s.comprasFornecedor[0];
+ const adjustment={action:'LOAD_ADJUST',cargaId:c.id,itens:[{produtoId:'p',qtd:760}],motivo:'Teste capacidade'};
+ assert.throws(()=>execute(s,adjustment),/Confirme/);
+ s=execute(s,{...adjustment,capacityConfirmation:capacityCheck(s.motoristas[0],38000).snapshot}).state;
+ s.fornecedores[0].emailPedidos='fornecedor@example.invalid';s=execute(s,{action:'SUPPLIER_PREVIEW',id:o.id}).state;
+ const send={action:'SUPPLIER_SEND',id:o.id,canal:'EMAIL',capacityConfirmation:capacityCheck(s.motoristas[0],38000).snapshot};
+ s=execute(s,send).state;s.comunicacoes[0].state='BLOCKED';s.comunicacoes[0].reason='CAPACIDADE: mudou';
+ s.motoristas[0].capacidadeMaximaKg=42000;
+ s=execute(s,{...send,capacityConfirmation:capacityCheck(s.motoristas[0],38000).snapshot}).state;
+ assert.equal(s.comunicacoes.length,1);assert.equal(s.comunicacoes[0].state,'QUEUED');assert.equal(supplierDispatchCapacity(s,s.comunicacoes[0]).max,42000);
+});
