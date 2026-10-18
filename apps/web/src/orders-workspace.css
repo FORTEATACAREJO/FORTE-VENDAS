@@ -3,3 +3,5 @@
 .ow-search{min-width:0}.ow-matches{display:grid;gap:4px;margin:4px 0 10px;max-height:220px;overflow:auto}.ow-matches button{text-align:left;white-space:normal}.ow input[readonly]{background:#edf2f4;color:#243746}.ow-contact{margin:18px 0;padding:14px;border-top:1px solid #ced9e0}.ow-contact a{color:inherit;font-weight:700}
 
 .ow-mirror{padding:16px;background:#f4f7fa;border-top:4px solid #e46f1e;border-radius:8px;margin:12px 0}.ow-mirror h4{color:#162a3a}
+
+.ow-capacity-backdrop{position:fixed;inset:0;z-index:1000;background:#0008;display:flex;align-items:center;justify-content:center;padding:20px}.ow-capacity-dialog{background:#fff;color:#162a3a;border-radius:12px;padding:24px;max-width:480px;width:100%;box-shadow:0 16px 48px #0005}.ow-capacity-dialog .ow-actions{justify-content:flex-end}
