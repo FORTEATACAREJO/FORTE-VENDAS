@@ -1,4 +1,4 @@
-import {mergeOperation,paymentCandidates} from './operation.mjs';
+import {mergeOperation,mergeAcceptedLoads,paymentCandidates} from './operation.mjs';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 const headers={'Access-Control-Allow-Origin':'https://forte-vendas.onrender.com','Access-Control-Allow-Headers':'authorization,apikey,x-client-info,content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Content-Type':'application/json'};
 const bridge='https://nkynfboqwfxhhxcsrawl.supabase.co/functions/v1/vendas-frete-bridge';
@@ -27,6 +27,12 @@ Deno.serve(async req=>{
    // A failed acknowledgement is retried; the receiver is idempotent by external event ID.
    await call('CONFIRM_ACCEPTANCE',{eventId:event.id});confirmedEvents.push(event.id);received++;
   }catch{pending.push(event.id)}}
+  const receipts=await admin.from('fc_frete_solicitacoes').select('*').eq('empresa_id',p.empresa_id);if(receipts.error)throw receipts.error;
+  for(let attempt=0;attempt<3;attempt++){
+   const {data:row,error}=await admin.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(error)throw error;
+   const next=mergeAcceptedLoads(row.estado,receipts.data||[]);if(JSON.stringify(next)===JSON.stringify(row.estado))break;
+   const saved=await admin.from('fc_app_state').update({estado:next,versao:row.versao+1}).eq('empresa_id',p.empresa_id).eq('versao',row.versao).select('versao').maybeSingle();if(saved.error)throw saved.error;if(saved.data)break;if(attempt===2)throw Error('Atualização concorrente. Sincronize novamente.');
+  }
   const paymentPending=[];
   const {data:paymentRow,error:paymentError}=await admin.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(paymentError)throw paymentError;
   let paymentAttempts=0;
