@@ -49,7 +49,12 @@ Deno.serve(async(req)=>{
   if(b.action==='DOCUMENT_VALIDATE'){
     const doc=(out.state.documentos||[]).find(d=>d.id===b.documentoId);
     const load=(out.state.cargas||[]).find(c=>c.id===b.cargaId);
-    if(doc?.categoria==='COMPROVANTE FRETE'&&load?.numeroPedidoFornecedor&&load?.motoristaId){try{await freteBridge('SYNC_PAYMENT',b.cargaId);}catch(e){warning='Documento validado. A sincronização do comprovante com o Forte Frete ficou pendente: '+e.message;}}
+    if(doc?.categoria==='COMPROVANTE FRETE'&&load?.numeroPedidoFornecedor&&load?.motoristaId){try{const receipt=await freteBridge('SYNC_PAYMENT',b.cargaId);if(receipt.comprovanteHash!==doc.hash)throw Error('Comprovante alterado durante a sincronização.');warning='Comprovante enviado ao Forte Frete. Sincronize os aceites para confirmar o fechamento.';}catch(e){warning='Documento validado. A sincronização do comprovante com o Forte Frete ficou pendente: '+e.message;}}
+  }
+  if(!out.replayed&&['SALE_LINK','SALE_ADJUST','LOADING_SAVE'].includes(b.action)){
+   const sale=(out.state.vendas||[]).find(v=>v.id===b.vendaId);const cargaId=b.cargaId||sale?.cargaId;
+   const load=(out.state.cargas||[]).find(c=>c.id===cargaId);
+   if(load?.ordemMotoristaEnviada&&load?.fretePublicadaId){try{await freteBridge('PUBLISH',load.id);}catch{warning='Dados gravados. A atualização dos PDFs do motorista ficou pendente; use Sincronizar ordem, romaneio e comprovante no Forte Frete.';}}
   }
   if(!out.replayed&&['SUPPLIER_SEND','SALE_CREATE','SALE_ADJUST','LOADING_SAVE','SALE_LINK','LOAD_FINALIZE'].includes(b.action)&&typeof EdgeRuntime!=='undefined'){
     EdgeRuntime.waitUntil(fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/order-communications',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:JSON.stringify({action:'DISPATCH'}),signal:AbortSignal.timeout(55000)}).catch(()=>{}));

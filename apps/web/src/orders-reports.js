@@ -25,3 +25,13 @@ export function loadReport(data,c){return reportPDF('DOSSIÊ DA CARGA • '+c.co
  ]);}
 export function salesReport(groups){return reportPDF('PAINEL DE PEDIDOS DE VENDA',groups.map(g=>({title:g.numero+' • '+g.cliente,rows:g.rows.map(v=>v.produto+' • '+v.qtd+' unidades • '+money(v.totalGeral)+' • '+v.status+' • '+(v.cargaId||'Carga a definir'))})));}
 export function receiptReport(j){if(!j.reply)throw new Error('Não existe resposta do cliente.');return reportPDF('REGISTRO DE CONFIRMAÇÃO DE ENTREGA',[{title:'Identificação',rows:['Pedido: '+j.reference,'Carga: '+j.cargaId,'Cliente: '+(j.cliente||j.clienteId),'Telefone respondente: '+j.reply.from,'Mensagem original: '+j.providerId,'Resposta: '+j.reply.providerId,'Recebido em: '+date(j.reply.receivedAt)]},{title:'Resposta registrada: '+j.reply.answer,rows:j.reply.items.map(i=>i.qtd+' de '+i.produto)},{title:'Registro comercial',rows:['Resposta vinculada à mensagem original e à quantidade apresentada ao cliente. Este registro preserva a resposta recebida; não substitui automaticamente o canhoto fiscal.']}]);}
+
+export function deliverySections(data,c){
+ if(!c.ordemRevisadaEm)throw Error('Revise a ordem antes de gerar o romaneio.');
+ const rows=(data.vendas||[]).filter(v=>v.status!=='CANCELADA'&&(c.vendaIds||[]).includes(v.id));
+ if(!rows.length)throw Error('Vincule as vendas dos clientes antes de gerar o romaneio.');
+ const groups=new Map();
+ for(const v of rows){const key=JSON.stringify([v.clienteId,v.destino]);groups.set(key,[...(groups.get(key)||[]),v]);}
+ return [{title:'Carregamento '+c.codigo,rows:['Pedido fornecedor: '+c.numeroPedidoFornecedor,'Motorista: '+c.motorista,'Placas: '+(c.placas||[]).join(' / '),'Data do carregamento: '+(c.dataCarregamento||'—'),'Origem: '+(c.localCarregamento||c.origem)]},...[...groups.values()].map((sales,index)=>{const first=sales[0],client=(data.clientes||[]).find(x=>x.id===first.clienteId)||{};return {title:'Entrega '+(index+1)+' • '+first.cliente,rows:['Endereço / obra: '+(first.destino||'CONFERIR ENDEREÇO'),'Contato: '+(client.whatsapp||client.telefone||first.clienteWhatsapp||'—'),...sales.map(v=>'Pedido '+(v.numeroVenda||v.id)+' • '+v.qtd+' '+(v.unidadeMedida||'unidades')+' de '+v.produto+' • '+Number(v.pesoKg||0)/1000+' t'),'Recebido por: __________________________________','Documento: __________________ Data: ____/____/______','Assinatura: ____________________________________','Observações / divergências: _______________________']};})];
+}
+export function deliveryReport(data,c){return reportPDF('ROMANEIO DE ENTREGA POR CLIENTE',deliverySections(data,c));}

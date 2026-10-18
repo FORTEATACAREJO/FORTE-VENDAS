@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm');
 const {stripTypeScriptTypes}=require('node:module');
-const {mergeOperation,paymentCandidates}=require('../supabase/functions/sync-frete-acceptances/operation.mjs');
+const {mergeOperation,mergeAcceptedLoads,paymentCandidates}=require('../supabase/functions/sync-frete-acceptances/operation.mjs');
 const source=stripTypeScriptTypes(fs.readFileSync('supabase/functions/sync-frete-acceptances/index.ts','utf8')).replace(/^import .*;\n/gm,'');
 
 function fixture({failed=[],count=2,authenticated=true}={}){
@@ -10,11 +10,11 @@ function fixture({failed=[],count=2,authenticated=true}={}){
   const snapshot={cargas:[],viagens:[],usuarios:[]};
   const state={cargas:[],freteOperacao:snapshot};
   const profile={empresa_id:'company',perfil:'MASTER',ativo:true,status_aprovacao:'APROVADO',trocar_senha:false};
-  const ctx={mergeOperation,paymentCandidates,Request,Response,AbortSignal,JSON,Date,Error,
+  const ctx={mergeOperation,mergeAcceptedLoads,paymentCandidates,Request,Response,AbortSignal,JSON,Date,Error,
     Deno:{env:{get:()=> 'https://vendas.test'},serve:fn=>ctx.handler=fn},
     createClient:()=>({auth:{getUser:async()=>({data:{user:authenticated?{id:'user'}:null}})},
       rpc:async(name,args)=>{if(name==='fc_receber_aceite_frete')received.push(args.p_evento);return {data:true}},
-      from:table=>({select(){return this},eq(){return this},single:async()=>({data:table==='fc_perfis'?profile:{estado:state,versao:1}})})}),
+      from:table=>({select(){return this},eq(){return this},then(resolve){return Promise.resolve({data:[]}).then(resolve)},single:async()=>({data:table==='fc_perfis'?profile:{estado:state,versao:1}})})}),
     fetch:async(url,options)=>{
       if(url.endsWith('/sync-frete-drivers'))return Response.json({ok:true});
       const body=JSON.parse(options.body);
