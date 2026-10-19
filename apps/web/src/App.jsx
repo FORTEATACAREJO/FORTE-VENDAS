@@ -1,3 +1,5 @@
+import {OperationsMenu,OperationContextNav} from './OperationsNavigation.jsx';
+import {salesAreaFor,salesBottomTab} from './operations-navigation.mjs';
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {createItauTestPDF} from './itau-test-pdf.js';
 import {registryConflict} from "./registry-identity.js";
@@ -879,6 +881,7 @@ export default function App() {
     return !!rule[action] || (action !== "visualizar" && !!rule.editar);
   };
   const canAccessTab = (screen, action = "visualizar") => canAccessGroup(groupForTab(screen), action);
+  const salesArea=salesAreaFor(tab);
   const visibleModuleGroups = MODULE_GROUPS.filter((g) => canAccessGroup(g.id));
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
@@ -2295,13 +2298,14 @@ export default function App() {
               {tab.startsWith("group:")
                 ? MODULE_GROUPS.find((g) => `group:${g.id}` === tab)?.title ||
                   "TÓPICO"
-                : MODULES.find((m) => m[0] === tab)?.[2] || "MÓDULO"}
+                : salesArea?.title || MODULES.find((m) => m[0] === tab)?.[2] || "MÓDULO"}
             </b>
           </div>
         )}
         {tab.startsWith("group:") &&
           (() => {
             const gid = tab.split(":")[1];
+            if(gid === "vendas")return <OperationsMenu canAccess={canAccessTab} onNavigate={setTab}/>;
             if (gid === "integracoes")
               return (
                 <section className="dashboardGroup groupScreen">
@@ -2385,6 +2389,7 @@ export default function App() {
               </section>
             );
           })()}
+        <OperationContextNav screen={tab} canAccess={canAccessTab} onNavigate={setTab}/>
         {tab === "home" && (
           <HomeCompactV47
             data={data}
@@ -2399,7 +2404,7 @@ export default function App() {
         <div className="systemDate">
           <b>DATA/HORA DO SISTEMA:</b> {stamp()}
         </div>
-        <BottomNav active={tab} items={[{id:"home",label:"Início",icon:"home"},...(canAccessGroup("vendas")?[{id:"group:vendas",label:"Vendas",icon:"file"},{id:"new-sale",label:"Vender",icon:"plus",primary:true}]:[]),...(canAccessGroup("logistica")?[{id:"todasCargas",label:"Cargas",icon:"truck"}]:[])]} onSelect={id=>id==="new-sale"?setModal({type:"sale"}):setTab(id)} onMore={()=>drawer.setOpen(true)}/>
+        <BottomNav active={salesBottomTab(tab)} items={[{id:"home",label:"Início",icon:"home"},...(canAccessGroup("vendas")?[{id:"group:vendas",label:"Vendas",icon:"file"},{id:"new-sale",label:"Vender",icon:"plus",primary:true}]:[]),...(canAccessTab("painelCargas")?[{id:"painelCargas",label:"Cargas",icon:"truck"}]:[])]} onSelect={id=>id==="new-sale"?setModal({type:"sale"}):setTab(id)} onMore={()=>drawer.setOpen(true)}/>
         {tab !== "home" && !tab.startsWith("group:") && tab !== "clientes" && (
           <ModuleAttachBar
             data={data}
