@@ -1,3 +1,5 @@
+import OperationSheet from "./OperationSheet.jsx";
+import {allocatedInvoice} from "./operation-sheet-model.mjs";
 import {OperationsMenu,OperationContextNav} from './OperationsNavigation.jsx';
 import {salesAreaFor,salesBottomTab} from './operations-navigation.mjs';
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
@@ -3157,11 +3159,10 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
-        {tab === "painelUnicoVendas" && <button className="secondary" onClick={()=>{setWorkflowInitialTab("venda");setTab("comprasFornecedor");}}>Ajustar pedidos, relatórios e avisos ao cliente</button>}
-        {tab === "painelUnicoVendas" && <UnifiedSalesPanel data={data} onChange={setData} currentUser={currentUser} canRoute={canAccessTab("painelUnicoVendas", "editar")} onNavigate={id=>{if(id==="clientes"){setWorkflowInitialTab("venda");setTab("comprasFornecedor");}else setTab(id);}} />}
+        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onDireta={()=>{}} />} /> }
         {tab === "comprasFornecedor" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "painelCargas" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="cargas" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
+        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onDireta={()=>{}} />} /> }
         {tab === "ordensCarregamento" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
@@ -8706,6 +8707,7 @@ function ContaCorrenteFornecedores({ data, onChange, currentUser }) {
 }
 
 function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
+  const [historicoNotas,setHistoricoNotas]=useState(false);
   const [busca, setBusca] = useState("");
   const [links, setLinks] = useState({});
   const [qtdPaletes, setQtdPaletes] = useState({});
@@ -8734,7 +8736,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     });
   }
   const notas = todasNotas
-    .filter((n) => !ehNotaPallet(n))
+    .filter((n) => !ehNotaPallet(n) && allocatedInvoice(n) === historicoNotas)
     .slice()
     .sort((a, b) =>
       String(b.emissao || b.importadaEm || "").localeCompare(
@@ -9315,6 +9317,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     if (n.destinacao === "FORTE ATACAREJO" || n.status === "INCORPORADA AO ESTOQUE" || n.finalizacaoDiretaEm) return alert("ESTA NOTA JÁ FOI DESTINADA AO ESTOQUE OU FINALIZADA.");
     if (!n.documentoXmlId || !(n.produtos||[]).length) return alert("IMPORTAR O XML COMPLETO COM PRODUTOS ANTES DE ENVIAR A NF PARA VENDAS DIRETAS.");
     const notaPalletAutomatica = notaPalletRelacionada(n);
+    if(allocatedInvoice(n))return alert("NOTA JÁ DESTINADA OU INCORPORADA.");
     const cargaId = links[n.id] || n.cargaId || sugerida(n)?.id;
     if (!cargaId)
       return alert("SELECIONE A CARGA / PRÉ-VENDA QUE RECEBERÁ ESTA NOTA.");
@@ -9372,6 +9375,7 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
     onDireta(cargaId);
   }
   function forte(n) {
+    if(allocatedInvoice(n))return alert("NOTA JÁ DESTINADA OU INCORPORADA.");
     if (!exigirDossie(n)) return;
     if (
       n.destinacao === "CARGA DIRETA" ||
@@ -9669,6 +9673,7 @@ DESEJA DAR ENTRADA DESTES PALLETS NO ESTOQUE / GALPÃO DA FORTE ATACAREJO?`);
           />
         </label>
       </div>
+      <button type="button" className="secondary" onClick={()=>setHistoricoNotas(!historicoNotas)}>{historicoNotas?"VER NOTAS PENDENTES":"HISTÓRICO DAS NOTAS DESTINADAS"}</button>
       <UpperInput
         value={busca}
         onChange={setBusca}
