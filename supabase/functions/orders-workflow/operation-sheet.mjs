@@ -29,7 +29,7 @@ export function linkSales(s,c,ids){
 }
 function invoiceItems(s,n,mapping){
  if(!n.produtos?.length||!Array.isArray(mapping)||mapping.length!==n.produtos.length)fail('Confira o vínculo de todos os produtos da nota.');
- return n.produtos.map((item,index)=>{
+ const lines=n.produtos.map((item,index)=>{
   const map=mapping.find(m=>m.index===index),p=list(s,'produtos').find(p=>p.id===map?.produtoId&&p.ativo!==false);
   if(!p||p.revenda===false||/USO|CONSUMO|IMOBILIZADO/.test(norm(p.finalidade||p.classificacao||p.destinacao||'REVENDA')))fail('Selecione o produto de revenda correspondente a cada item da nota.');
   const qtd=positive(item.quantidade,'quantidade da NF');if(!Number.isSafeInteger(qtd))fail('Converta e confira a unidade da NF antes da incorporação.');
@@ -40,6 +40,7 @@ function invoiceItems(s,n,mapping){
   const pesoKg=qtd*positive(p.pesoKg,'peso cadastrado do produto');const cost=Number(item.valorUnitario||0);if(!Number.isFinite(cost)||cost<0)fail('Custo da NF inválido.');
   return {produtoId:p.id,produto:p.nome,marca:p.marca,qtd,pesoKg,custoUnitario:cost,total:Math.round(qtd*cost*100)/100,unidadeMedida:unit||fiscal};
  });
+ const consolidated=new Map();for(const i of lines){const old=consolidated.get(i.produtoId);if(old){old.qtd+=i.qtd;old.pesoKg+=i.pesoKg;old.total=Math.round((old.total+i.total)*100)/100;old.custoUnitario=old.total/old.qtd;}else consolidated.set(i.produtoId,{...i});}return [...consolidated.values()];
 }
 export function sheetAction(s,b,p,{id,at}){
  if(b.action==='EXTERNAL_REJECT'){
