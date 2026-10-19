@@ -65,9 +65,9 @@ if(created.error||!created.data.user)return reply({error:"Não foi possível cri
 createdId=created.data.user.id;
 const saved=await admin.rpc("access_register_profile",{p_user:createdId,p_app:app,p_nome:v.nome,p_cpf:v.cpf,p_whatsapp:v.whatsapp,p_birth:v.data_nascimento,p_email:v.email});
 if(saved.error)throw Error("Falha ao salvar cadastro.");
-if(!frete){const draft=await admin.from('access_registration_drafts').update({data:{...v,observacao:String(b.observacao||'').slice(0,1000)}}).eq('user_id',createdId).eq('app',app);if(draft.error)throw Error('Falha ao salvar o rascunho.');if(b.save_draft!==true){const sent=await admin.rpc('access_submit_registration',{p_user:createdId,p_app:app});if(sent.error)throw Error('Falha ao enviar o cadastro completo.');}}
+if(!frete){const draft=await admin.from('access_registration_drafts').update({data:{...v,observacao:String(b.observacao||'').slice(0,1000)}}).eq('user_id',createdId).eq('app',app);if(draft.error)throw Error('Falha ao salvar o rascunho.');}
 await audit("CADASTRO_ENVIADO",createdId);createdId=null;
-return reply({status:"PENDENTE",message:"Cadastro enviado para análise. Aguarde aprovação do admin ou master. Entre com CPF e senha para acompanhar."},201);
+return reply({status:"PENDENTE",message:"Rascunho criado. Entre com CPF e senha, confirme o termo e envie o cadastro completo para análise."},201);
 }
 if(action==="LOGIN"){
 const cpf=digits(b.cpf);if(!validCpf(cpf)||typeof b.password!=="string"||!b.password||b.password.length>256)return reply({error:"Informe CPF e sua senha cadastrada."},400);
@@ -89,6 +89,16 @@ return reply({access_token:logged.data.session.access_token,refresh_token:logged
 const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,""),u=await admin.auth.getUser(token);
 if(u.error||!u.data.user)return reply({error:"Sessão inválida. Entre novamente."},401);
 const uid=u.data.user.id,p=await readProfile(uid);if(!p)return reply({error:"Cadastro não localizado."},403);
+if(['vendas','financeiro','venda-externa'].includes(app)){
+if(action==='LEGAL_STATUS'||action==='LEGAL_ACCEPT'||action==='LEGAL_RECEIPTS'){
+ const result=action==='LEGAL_STATUS'?await admin.rpc('forte_legal_status',{p_user:uid,p_app:app}):action==='LEGAL_ACCEPT'?await admin.rpc('forte_legal_accept',{p_user:uid,p_app:app,p_version:b.version,p_hash:b.hash,p_confirmed:b.confirmed===true,p_source:req.headers.get('origin')}):await admin.rpc('forte_legal_receipts',{p_actor:uid,p_target:typeof b.user_id==='string'?b.user_id:uid,p_app:app});
+ if(result.error)return reply({error:result.error.message},400);return reply(action==='LEGAL_RECEIPTS'?{receipts:result.data}:result.data);
+}
+// Draft editing, password recovery and status remain available before acknowledgment.
+if(!['STATUS','SET_PASSWORD','REGISTRATION_DRAFT','REGISTRATION_SAVE','REQUEST_ACCESS'].includes(action)){
+ const legal=await admin.rpc('forte_legal_status',{p_user:uid,p_app:app});if(legal.error||legal.data?.accepted!==true)return reply({error:'Aceite pendente do termo vigente neste módulo.'},428);
+}
+}
 const context=await admin.rpc('access_module_context',{p_user:uid,p_app:app});if(context.error)throw Error('Não foi possível conferir a autorização do módulo.');const moduleContext=context.data||{},isAdmin=moduleContext.isAdmin===true;
 if(action==='REGISTRATION_DRAFT'){const draft=await admin.from('access_registration_drafts').select('*').eq('user_id',uid).eq('app',app).maybeSingle();if(draft.error)throw Error('Não foi possível carregar o rascunho.');const request=await admin.from('access_requests').select('status').eq('user_id',uid).eq('app',app).maybeSingle();if(request.error)throw Error('Não foi possível conferir a solicitação.');return reply({draft:draft.data,user_id:uid,editable:request.data?.status==='PENDENTE'&&draft.data?.status==='DRAFT'&&!p.trocar_senha&&!p.must_change_password});}
 if(action==='REGISTRATION_SAVE'){const data:any={};for(const k of ['cpf','nome','whatsapp','data_nascimento','email','observacao'])if(b.data?.[k]!==undefined)data[k]=b.data[k];const saved=await admin.rpc('access_save_registration',{p_user:uid,p_app:app,p_data:data,p_revision:b.revision});if(saved.error)return reply({error:saved.error.message},400);return reply(saved.data);}
