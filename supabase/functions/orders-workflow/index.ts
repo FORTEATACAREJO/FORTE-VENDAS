@@ -63,7 +63,7 @@ Deno.serve(async(req)=>{
     const load=(out.state.cargas||[]).find(c=>c.id===b.cargaId);
     if(doc?.categoria==='COMPROVANTE FRETE'&&load?.numeroPedidoFornecedor&&load?.motoristaId){try{await freteBridge('SYNC_PAYMENT',b.cargaId);}catch(e){warning='Documento validado. A sincronização do comprovante com o Forte Frete ficou pendente: '+e.message;}}
   }
-  if(!out.replayed&&['SUPPLIER_SEND','SALE_CREATE','SALE_ADJUST','LOADING_SAVE','SALE_LINK','LOAD_FINALIZE'].includes(b.action)&&typeof EdgeRuntime!=='undefined'){
+  if(!out.replayed&&['SUPPLIER_SEND','SALE_CREATE','EXTERNAL_ACCEPT','SALE_EDIT','SALE_ADJUST','LOADING_SAVE','SALE_LINK','LOAD_FINALIZE'].includes(b.action)&&typeof EdgeRuntime!=='undefined'){
     EdgeRuntime.waitUntil(fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/order-communications',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:JSON.stringify({action:'DISPATCH'}),signal:AbortSignal.timeout(55000)}).catch(()=>{}));
   }
   return Response.json({ok:true,...out.result,replayed:!!out.replayed,warning},{headers:cors});
