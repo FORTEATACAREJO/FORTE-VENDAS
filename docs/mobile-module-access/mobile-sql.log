@@ -1,0 +1,20 @@
+✔ Fiscal migration enforces draft, module and full establishment scope (1865.254943ms)
+▶ module approval/rejection/revocation and actual RLS stay isolated
+  ✔ draft is private, passwords stripped, stale writes rejected and incomplete submissions blocked (15.864702ms)
+  ✔ approval in Vendas never grants Financeiro, Externas, Frete or Fiscal (13.757545ms)
+  ✔ a module Master cannot reject or approve a request for another company (3.62796ms)
+  ✔ rejecting Financeiro preserves Vendas approval and global identity (2.536831ms)
+  ✔ correction, resubmission and separate approval preserve the first grant (8.211007ms)
+  ✔ revoking one module is immediate and leaves the others approved (3.264493ms)
+  ✔ approved commercial Master cannot read raw financial JSON through REST-equivalent SQL (6.372896ms)
+  ✔ external-only approval has no commercial or finance authority (7.721636ms)
+  ✔ legacy Master keeps existing access without granting any new user that access (6.85606ms)
+✔ module approval/rejection/revocation and actual RLS stay isolated (1940.373757ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2071.630602

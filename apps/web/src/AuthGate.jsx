@@ -10,7 +10,8 @@ export default function AuthGate(){
    const p=await accessTimeout(supabase.from("fc_perfis").select("*").eq("user_id",u.data.user.id).maybeSingle());
    if(p.error)throw Error("Não foi possível carregar o perfil.");
    if(!p.data?.ativo||p.data.status_aprovacao!=="APROVADO"||p.data.trocar_senha)throw Error("O cadastro precisa de aprovação ou atualização da senha.");
-   if(live){setAuthContext({user:u.data.user,profile:p.data});setReady(true)}
+   const grant=await accessTimeout(supabase.rpc('access_current_module',{p_app:'vendas'}));if(grant.error||!grant.data?.allowed)throw Error('Aguarde aprovação específica no Forte Vendas.');
+   if(live){setAuthContext({user:u.data.user,profile:{...p.data,perfil:grant.data.role||p.data.perfil}});setReady(true)}
   }catch(e){if(live)setError(e.message||"Não foi possível conferir o acesso.")}
  }load();return()=>{live=false;setAuthContext(null)}},[attempt]);
  return ready?<App/>:<section><p>{error||"Conferindo acesso autorizado…"}</p>{error&&<button onClick={()=>setAttempt(n=>n+1)}>TENTAR NOVAMENTE</button>}</section>;

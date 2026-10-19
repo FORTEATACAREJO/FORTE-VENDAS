@@ -10,6 +10,7 @@ Deno.serve(async(req)=>{
   const client=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_ANON_KEY')!,{global:{headers:{Authorization:auth}}});
   const {data:{user},error:authError}=await client.auth.getUser();if(authError||!user)return Response.json({error:'Entre no sistema.'},{status:401,headers:cors});
   const {data:p,error:profileError}=await client.from('fc_perfis').select('*').eq('user_id',user.id).single();
+  const module=await client.rpc('access_current_module',{p_app:'vendas'});if(module.error||!module.data?.allowed)return Response.json({error:'Módulo sem aprovação.'},{status:403,headers:cors});if(p)p.perfil=module.data.role;
   if(profileError||!p?.ativo||p.status_aprovacao!=='APROVADO'||p.trocar_senha||!['MASTER','ADMINISTRADOR','OPERADOR_GERAL','VENDEDOR_INTERNO'].includes(p.perfil))return Response.json({error:'Seu perfil não tem acesso aprovado a esta operação.'},{status:403,headers:cors});
   const permissions=p.permissoes||{};
   if(!['MASTER','ADMINISTRADOR'].includes(p.perfil)&&permissions.vendas!==true&&permissions['carga-direta']!==true&&permissions['VENDAS E COMPRAS']?.editar!==true)return Response.json({error:'Sem permissão para editar vendas e compras.'},{status:403,headers:cors});

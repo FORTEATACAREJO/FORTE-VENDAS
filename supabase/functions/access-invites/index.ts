@@ -8,11 +8,12 @@ Deno.serve(async req=>{
  const reply=(x:unknown,status=200)=>Response.json(x,{status,headers});if(req.method==='OPTIONS')return new Response(null,{status:valid?204:403,headers});if(!valid||req.method!=='POST')return reply({error:'Origem ou método não permitido.'},403);
  const db=createClient(url,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}}),ok=(r:any)=>{if(r.error)throw Error(r.error.message);return r.data};
  try{
-  const b=await req.json(),action=b.action||'LIST',app=projectApps[ref].includes(b.app)?b.app:origins[origin];
+  const b=await req.json(),action=b.action||'LIST',app=origins[origin]==='vendas'&&b.app==='financeiro'?'financeiro':origins[origin];if(b.app!==undefined&&b.app!==app)return reply({error:'Módulo incompatível com a origem.'},403);
   const jwt=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');const u=await db.auth.getUser(jwt);if(u.error||!u.data.user)return reply({error:'Entre para continuar.'},401);const uid=u.data.user.id;
   const fiscal=ref==='xmfpvvmvdkepmnvtdoio',frete=ref==='nkynfboqwfxhhxcsrawl';
   const p=ok(await db.from(fiscal?'profiles':frete?'usuarios_app':'fc_perfis').select('*').eq(fiscal?'id':'user_id',uid).single());
-  const role=String(p.role||p.perfil),active=Boolean(p.active??p.ativo)&&(!p.status_aprovacao||p.status_aprovacao==='APROVADO')&&!p.must_change_password&&!p.trocar_senha,admin=active&&['MASTER','ULTRA_ADMIN','ADMIN','ADMINISTRADOR'].includes(role),master=active&&['MASTER','ULTRA_ADMIN'].includes(role);
+  const ctx=ok(await db.rpc('access_module_context',{p_user:uid,p_app:app}));
+  const role=String(ctx.role||''),active=ctx.allowed===true&&Boolean(p.active??p.ativo)&&(!p.status_aprovacao||p.status_aprovacao==='APROVADO')&&!p.must_change_password&&!p.trocar_senha,admin=active&&['MASTER','ULTRA_ADMIN','ADMIN','ADMINISTRADOR'].includes(role),master=active&&['MASTER','ULTRA_ADMIN'].includes(role);
   let approvedDriver=false;if(frete&&active&&role==='MOTORISTA'){const m=ok(await db.from('motoristas').select('status_cadastro').eq('auth_user_id',uid).maybeSingle());approvedDriver=m?.status_cadastro==='aprovado';}
   if(action==='CLAIM'){if(!b.codigo)throw Error('Convite inválido.');const requests=ok(await db.from('access_requests').select('id').eq('user_id',uid).eq('app',app).limit(1));if(!requests.length){if(!p.data_nascimento)throw Error('Complete o nascimento na solicitação de acesso antes de usar este convite.');ok(await db.from('access_requests').insert({user_id:uid,app,nome:p.full_name||p.nome,cpf:p.cpf,whatsapp:p.whatsapp,data_nascimento:p.data_nascimento,email:p.email||null,managed_account:true}));}ok(await db.rpc('access_invite_claim',{p_user:uid,p_token:b.codigo,p_app:app}));return reply({message:'Convite vinculado. A administração escolherá o perfil na aprovação.'});}
   if(!admin&&!approvedDriver)return reply({error:'Convites exigem administração aprovada ou motorista aprovado no Forte Frete.'},403);
