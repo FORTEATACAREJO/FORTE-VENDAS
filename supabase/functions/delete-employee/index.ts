@@ -22,6 +22,7 @@ Deno.serve(async (request)=>{
     const role=String(callerProfile.data?.perfil||"").toUpperCase();
     if(!callerProfile.data?.ativo||!["ADMINISTRADOR","ADMIN","MASTER"].includes(role)) return reply(origin,403,{error:"SOMENTE ADMIN OU MASTER PODE EXCLUIR CADASTROS."});
 
+    const scope=await admin.rpc('access_module_context',{p_user:caller.data.user.id,p_app:'vendas'});if(scope.error||!scope.data?.isAdmin)return reply(origin,403,{error:'ADMINISTRAÇÃO DO FORTE VENDAS OBRIGATÓRIA.'});
     const body=await request.json();
     const authorizationPassword=String(body.authorizationPassword||"");
     if(!authorizationPassword) return reply(origin,401,{error:"INFORME A SENHA DO ADMIN/MASTER PARA AUTORIZAR A EXCLUSÃO."});
@@ -46,6 +47,7 @@ Deno.serve(async (request)=>{
       if((masters.count||0)<=1) return reply(origin,409,{error:"O ÚLTIMO MASTER ATIVO NÃO PODE SER EXCLUÍDO."});
     }
 
+    const other=await admin.from('access_requests').select('app').eq('user_id',target.data.user_id).neq('app','vendas').limit(1);if(other.error||other.data?.length)return reply(origin,409,{error:'Este usuário possui vínculo com outro módulo. Revogue somente o acesso ao Forte Vendas pelo painel de cadastros.'});
     await admin.from("fc_usuarios_pendentes").delete().eq("auth_user_id",target.data.user_id);
     const profileDelete=await admin.from("fc_perfis").delete().eq("user_id",target.data.user_id);
     if(profileDelete.error) return reply(origin,500,{error:"NÃO FOI POSSÍVEL REMOVER O PERFIL DO USUÁRIO."});

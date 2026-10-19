@@ -19,6 +19,7 @@ Deno.serve(async request => {
     if (error || !data.user) return reply({error:'Sessão inválida. Entre novamente.'},401);
     const fiscal = ref === 'xmfpvvmvdkepmnvtdoio',frete = ref === 'nkynfboqwfxhhxcsrawl';
     const profile = await db.from(fiscal?'profiles':frete?'usuarios_app':'fc_perfis').select('*').eq(fiscal?'id':'user_id',data.user.id).maybeSingle();
+    const app=fiscal?'fiscal':origin.includes('financeiro')?'financeiro':origin.includes('venda-externa')?'venda-externa':'vendas';const scope=await db.rpc('access_module_context',{p_user:data.user.id,p_app:app});if(scope.error||!scope.data?.allowed)return reply({error:'Aprovação neste módulo é obrigatória.'},403);
     if (profile.error || !isVaultMaster(profile.data)) return reply({error:'Somente Master ativo e aprovado pode administrar o cofre.'},403);
     // getUser validated this token. The database additionally checks that this session still exists.
     const claims = JSON.parse(atob(jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));

@@ -26,6 +26,7 @@ Deno.serve(async (request) => {
       throw new Error("OPERAÇÃO EXCLUSIVA DE ADMIN OU MASTER.");
     }
 
+    const scope=await admin.rpc('access_module_context',{p_user:user.id,p_app:'vendas'});if(scope.error||!scope.data?.isAdmin)throw Error('ADMINISTRAÇÃO DO FORTE VENDAS OBRIGATÓRIA.');
     const body = request.method === "POST" ? await request.json() : {};
     const action = String(body.action || "LIST").toUpperCase();
     if (action === "LIST") {

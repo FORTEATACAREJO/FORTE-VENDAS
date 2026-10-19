@@ -13,7 +13,7 @@ function fixture({failed=[],count=2,authenticated=true}={}){
   const ctx={mergeOperation,paymentCandidates,Request,Response,AbortSignal,JSON,Date,Error,
     Deno:{env:{get:()=> 'https://vendas.test'},serve:fn=>ctx.handler=fn},
     createClient:()=>({auth:{getUser:async()=>({data:{user:authenticated?{id:'user'}:null}})},
-      rpc:async(name,args)=>{if(name==='fc_receber_aceite_frete')received.push(args.p_evento);return {data:true}},
+      rpc:async(name,args)=>{if(name==='access_current_module')return{data:{allowed:true,role:profile.perfil}};if(name==='fc_receber_aceite_frete')received.push(args.p_evento);return {data:true}},
       from:table=>({select(){return this},eq(){return this},single:async()=>({data:table==='fc_perfis'?profile:{estado:state,versao:1}})})}),
     fetch:async(url,options)=>{
       if(url.endsWith('/sync-frete-drivers'))return Response.json({ok:true});

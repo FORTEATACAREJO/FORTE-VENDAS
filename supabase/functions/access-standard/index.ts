@@ -33,7 +33,7 @@ if(req.method!=="POST"||!validOrigin)return reply({error:"Requisição não perm
 let admin:any,createdId:string|null=null;
 try{
 const b=await req.json(),action=String(b.action||"STATUS"),key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const permittedApps=frete?["frete"]:fiscal?["fiscal"]:["vendas","financeiro","venda-externa","carga-direta","patio","site"];const app=permittedApps.includes(b.app)?b.app:apps[origin];
+const permittedApps=frete?["frete"]:fiscal?["fiscal"]:["vendas","financeiro","venda-externa","carga-direta","patio","site"];const app=apps[origin]==="vendas"&&b.app==="financeiro"?"financeiro":apps[origin];if(b.app!==undefined&&b.app!==app)return reply({error:"O módulo solicitado não corresponde à origem."},403);
 admin=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 const table=fiscal?"profiles":frete?"usuarios_app":"fc_perfis",idcol=fiscal?"id":"user_id";
 const readProfile=async(uid:string)=>{const r=await admin.from(table).select("*").eq(idcol,uid).maybeSingle();if(r.error)throw Error("Falha ao conferir cadastro.");return r.data};
@@ -65,8 +65,9 @@ if(created.error||!created.data.user)return reply({error:"Não foi possível cri
 createdId=created.data.user.id;
 const saved=await admin.rpc("access_register_profile",{p_user:createdId,p_app:app,p_nome:v.nome,p_cpf:v.cpf,p_whatsapp:v.whatsapp,p_birth:v.data_nascimento,p_email:v.email});
 if(saved.error)throw Error("Falha ao salvar cadastro.");
+if(!frete){const draft=await admin.from('access_registration_drafts').update({data:{...v,observacao:String(b.observacao||'').slice(0,1000)}}).eq('user_id',createdId).eq('app',app);if(draft.error)throw Error('Falha ao salvar o rascunho.');}
 await audit("CADASTRO_ENVIADO",createdId);createdId=null;
-return reply({status:"PENDENTE",message:"Cadastro enviado para análise. Aguarde aprovação do admin ou master. Entre com CPF e senha para acompanhar."},201);
+return reply({status:"PENDENTE",message:"Rascunho criado. Entre com CPF e senha, confirme o termo e envie o cadastro completo para análise."},201);
 }
 if(action==="LOGIN"){
 const cpf=digits(b.cpf);if(!validCpf(cpf)||typeof b.password!=="string"||!b.password||b.password.length>256)return reply({error:"Informe CPF e sua senha cadastrada."},400);
@@ -88,12 +89,29 @@ return reply({access_token:logged.data.session.access_token,refresh_token:logged
 const token=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,""),u=await admin.auth.getUser(token);
 if(u.error||!u.data.user)return reply({error:"Sessão inválida. Entre novamente."},401);
 const uid=u.data.user.id,p=await readProfile(uid);if(!p)return reply({error:"Cadastro não localizado."},403);
-const isAdmin=Boolean((p.active??p.ativo)&&(!p.status_aprovacao||p.status_aprovacao==="APROVADO")&&!p.must_change_password&&!p.trocar_senha&&["MASTER","ADMIN","ADMINISTRADOR","ULTRA_ADMIN"].includes(p.role||p.perfil));
+if(['vendas','financeiro','venda-externa'].includes(app)){
+if(action==='LEGAL_STATUS'||action==='LEGAL_ACCEPT'||action==='LEGAL_RECEIPTS'){
+ const result=action==='LEGAL_STATUS'?await admin.rpc('forte_legal_status',{p_user:uid,p_app:app}):action==='LEGAL_ACCEPT'?await admin.rpc('forte_legal_accept',{p_user:uid,p_app:app,p_version:b.version,p_hash:b.hash,p_confirmed:b.confirmed===true,p_source:req.headers.get('origin')}):await admin.rpc('forte_legal_receipts',{p_actor:uid,p_target:typeof b.user_id==='string'?b.user_id:uid,p_app:app});
+ if(result.error)return reply({error:result.error.message},400);return reply(action==='LEGAL_RECEIPTS'?{receipts:result.data}:result.data);
+}
+// Draft editing, password recovery and status remain available before acknowledgment.
+if(!['STATUS','SET_PASSWORD','REGISTRATION_DRAFT','REGISTRATION_SAVE','REQUEST_ACCESS'].includes(action)){
+ const legal=await admin.rpc('forte_legal_status',{p_user:uid,p_app:app});if(legal.error||legal.data?.accepted!==true)return reply({error:'Aceite pendente do termo vigente neste módulo.'},428);
+}
+}
+const context=await admin.rpc('access_module_context',{p_user:uid,p_app:app});if(context.error)throw Error('Não foi possível conferir a autorização do módulo.');const moduleContext=context.data||{},isAdmin=moduleContext.isAdmin===true;
+if(action==='REGISTRATION_DRAFT'){const draft=await admin.from('access_registration_drafts').select('*').eq('user_id',uid).eq('app',app).maybeSingle();if(draft.error)throw Error('Não foi possível carregar o rascunho.');const request=await admin.from('access_requests').select('status').eq('user_id',uid).eq('app',app).maybeSingle();if(request.error)throw Error('Não foi possível conferir a solicitação.');return reply({draft:draft.data,user_id:uid,editable:request.data?.status==='PENDENTE'&&draft.data?.status==='DRAFT'&&!p.trocar_senha&&!p.must_change_password});}
+if(action==='REGISTRATION_SAVE'){const data:any={};for(const k of ['cpf','nome','whatsapp','data_nascimento','email','observacao'])if(b.data?.[k]!==undefined)data[k]=b.data[k];const saved=await admin.rpc('access_save_registration',{p_user:uid,p_app:app,p_data:data,p_revision:b.revision});if(saved.error)return reply({error:saved.error.message},400);return reply(saved.data);}
+if(action==='REGISTRATION_SUBMIT'){const d=await admin.from('access_registration_drafts').select('data').eq('user_id',uid).eq('app',app).single();if(d.error)throw Error('Rascunho não localizado.');validateRegistration({...d.data.data,password:'000000'});const sent=await admin.rpc('access_submit_registration',{p_user:uid,p_app:app});if(sent.error)return reply({error:sent.error.message},400);return reply(sent.data);}
+if(action==='MODULE_STATE'||action==='CORRECTION'){if(!isAdmin)return reply({error:'Somente administração autorizada neste módulo.'},403);const r=await admin.rpc(action==='MODULE_STATE'?'access_change_module_state':'access_request_correction',{p_actor:uid,p_request:b.id,p_app:app,p_reason:b.reason,...(action==='MODULE_STATE'?{p_state:b.state}:{})});if(r.error)return reply({error:r.error.message},400);return reply(r.data);}
+
 if(action==="RECOVERY_REVIEW"){
  if(!["ATENDIDO","RECUSADO"].includes(b.decision))return reply({error:"Informe uma decisão válida para a recuperação."},400);
  if(!isAdmin)return reply({error:"Somente admin ou master aprovado pode analisar."},403);
  if(b.decision==="ATENDIDO"&&b.verified_contact!==true)return reply({error:"Confirme a identidade pelo contato já cadastrado antes de gerar a senha."},400);
- const claimed=await admin.rpc("access_recovery_claim",{p_request:b.id,p_actor:uid,p_decision:b.decision,p_reason:b.reason||null});
+ const recoveryRequest=await admin.from('access_recovery_requests').select('id,user_id').eq('id',b.id).eq('app',app).maybeSingle();if(recoveryRequest.error||!recoveryRequest.data)return reply({error:'Recuperação não pertence a este módulo.'},403);
+if(fiscal){const own=await admin.from('user_establishments').select('establishment_id').eq('user_id',uid),target=await admin.from('user_establishments').select('establishment_id').eq('user_id',recoveryRequest.data.user_id);if(own.error||target.error)throw Error('Não foi possível conferir unidades.');const allowed=new Set((own.data||[]).map((x:any)=>x.establishment_id));if(!(target.data||[]).length||(target.data||[]).some((x:any)=>!allowed.has(x.establishment_id)))return reply({error:'Usuário fora dos estabelecimentos autorizados.'},403);}else if(!frete){const target=await admin.from('fc_perfis').select('user_id').eq('user_id',recoveryRequest.data.user_id).eq('empresa_id',p.empresa_id).maybeSingle();if(target.error||!target.data)return reply({error:'Usuário fora da empresa autorizada.'},403);}
+const claimed=await admin.rpc("access_recovery_claim",{p_request:b.id,p_actor:uid,p_decision:b.decision,p_reason:b.reason||null});
  if(claimed.error)return reply({error:claimed.error.message||"Não foi possível analisar a recuperação."},400);
  const target=claimed.data;if(!target?.user_id)throw Error("Não foi possível conferir o destinatário.");
  if(b.decision==="RECUSADO"){await audit("RECUPERACAO_RECUSADA",uid);return reply({message:"Solicitação recusada."})}
@@ -132,37 +150,40 @@ let candidates=found.data||[];
 if(fiscal){
  const own=await admin.from("user_establishments").select("establishment_id").eq("user_id",uid);if(own.error)throw Error("Não foi possível conferir unidades.");
  const units=(own.data||[]).map((x:any)=>x.establishment_id);
- const scopes=units.length?await admin.from("user_establishments").select("user_id").in("establishment_id",units):{data:[]};if(scopes.error)throw Error("Não foi possível conferir usuários das unidades.");
- const permitted=new Set((scopes.data||[]).map((x:any)=>x.user_id));candidates=candidates.filter((x:any)=>permitted.has(x[idcol]));
+ const scopes=units.length?await admin.from("user_establishments").select("user_id,establishment_id").in("user_id",candidates.map((x:any)=>x[idcol])):{data:[]};if(scopes.error)throw Error("Não foi possível conferir usuários das unidades.");
+ const permitted=new Set((scopes.data||[]).map((x:any)=>x.user_id));candidates=candidates.filter((x:any)=>permitted.has(x[idcol])&&(scopes.data||[]).filter((u:any)=>u.user_id===x[idcol]).every((u:any)=>units.includes(u.establishment_id)));
 }
 const ids=candidates.map((x:any)=>x[idcol]);
-const grants=ids.length?await admin.from("access_requests").select("user_id,app,status,managed_account").in("user_id",ids):{data:[]};if(grants.error)throw Error("Não foi possível conferir acessos ativos.");
+const grants=ids.length?await admin.from("access_requests").select("id,user_id,app,status,managed_account,assigned_role").in("user_id",ids):{data:[]};if(grants.error)throw Error("Não foi possível conferir acessos ativos.");
 const users=candidates.filter((target:any)=>{
  if(target.status_aprovacao&&target.status_aprovacao!=="APROVADO")return false;
  const rows=(grants.data||[]).filter((x:any)=>x.user_id===target[idcol]),request=rows.find((x:any)=>x.app===app),managed=rows.some((x:any)=>x.managed_account);
- return managed?request?.status==="APROVADO":request?request.status==="APROVADO":legacyAllowed({...target,must_change_password:false,trocar_senha:false},app);
-}).map((target:any)=>({id:target[idcol],nome:target.full_name||target.nome,cpf:target.cpf,whatsapp:target.whatsapp,email:target.email,role:target.role||target.perfil,changing:Boolean(target.must_change_password||target.trocar_senha),created_at:target.created_at}));
+ const states=b.include_blocked===true?["SUSPENSO","REVOGADO"]:["APROVADO"];return managed?states.includes(request?.status):request?states.includes(request.status):b.include_blocked===true?false:legacyAllowed({...target,must_change_password:false,trocar_senha:false},app);
+}).map((target:any)=>({id:target[idcol],nome:target.full_name||target.nome,cpf:target.cpf,whatsapp:target.whatsapp,email:target.email,role:(grants.data||[]).find((x:any)=>x.user_id===target[idcol]&&x.app===app)?.assigned_role||target.role||target.perfil,status:(grants.data||[]).find((x:any)=>x.user_id===target[idcol]&&x.app===app)?.status||"APROVADO",request_id:(grants.data||[]).find((x:any)=>x.user_id===target[idcol]&&x.app===app)?.id,changing:Boolean(target.must_change_password||target.trocar_senha),created_at:target.created_at}));
 return reply({users,app,message:users.length+" usuário(s) com acesso ativo a este aplicativo."});
 }
 if(action==="QUEUE"){
 if(!isAdmin)return reply({error:"Somente admin ou master aprovado pode analisar."},403);
-let pending=await admin.from("access_requests").select("id,user_id,app,nome,cpf,whatsapp,email,data_nascimento,created_at").eq("status","PENDENTE").order("created_at");
+let pending=await admin.from("access_requests").select("id,user_id,app,nome,cpf,whatsapp,email,data_nascimento,created_at").eq("status","PENDENTE").eq("app",app).order("created_at");
 if(pending.error)throw Error("Falha ao carregar fila.");
 let items=pending.data||[];
+if(items.length){const ds=await admin.from('access_registration_drafts').select('user_id,status,data').eq('app',app).in('user_id',items.map((x:any)=>x.user_id));if(ds.error)throw Error('Não foi possível conferir os cadastros.');items=items.filter((x:any)=>{const d=(ds.data||[]).find((d:any)=>d.user_id===x.user_id);return !d||d.status==='SUBMITTED';}).map((x:any)=>({...x,observacao:(ds.data||[]).find((d:any)=>d.user_id===x.user_id)?.data?.observacao||''}));}
 if(!fiscal&&!frete){const ids=items.map((x:any)=>x.user_id);if(ids.length){const scoped=await admin.from("fc_perfis").select("user_id").eq("empresa_id",p.empresa_id).in("user_id",ids);if(scoped.error)throw Error("Falha ao conferir empresa.");const allowed=new Set((scoped.data||[]).map((x:any)=>x.user_id));items=items.filter((x:any)=>allowed.has(x.user_id))}}
 const units=fiscal?await admin.from("user_establishments").select("establishment_id,establishments(code)").eq("user_id",uid):{data:[]};
-const resets=await admin.from("access_recovery_requests").select("id,user_id,app,claimed_phone,claimed_birth,created_at").eq("status","PENDENTE").order("created_at");if(resets.error)throw Error("Não foi possível carregar recuperações.");
+const resets=await admin.from("access_recovery_requests").select("id,user_id,app,claimed_phone,claimed_birth,created_at").eq("status","PENDENTE").eq("app",app).order("created_at");if(resets.error)throw Error("Não foi possível carregar recuperações.");
+ if(fiscal&&items.length){const target=await admin.from('user_establishments').select('user_id,establishment_id').in('user_id',items.map((x:any)=>x.user_id));if(target.error||units.error)throw Error('Não foi possível conferir unidades.');const own=new Set((units.data||[]).map((x:any)=>x.establishment_id));items=items.filter((x:any)=>(target.data||[]).filter((u:any)=>u.user_id===x.user_id).every((u:any)=>own.has(u.establishment_id)));}
  const resetIds=(resets.data||[]).map((x:any)=>x.user_id),profiles=resetIds.length?await admin.from(table).select("*").in(idcol,resetIds):{data:[]};if(profiles.error)throw Error("Não foi possível conferir destinatários.");
  const targetUnits=fiscal&&resetIds.length?await admin.from("user_establishments").select("user_id,establishment_id").in("user_id",resetIds):{data:[]};if(targetUnits.error||units.error)throw Error("Não foi possível conferir unidades.");
  const ownUnits=new Set((units.data||[]).map((x:any)=>x.establishment_id));
  const recoveries=(resets.data||[]).flatMap((r:any)=>{const target=(profiles.data||[]).find((x:any)=>x[idcol]===r.user_id);if(!target||!fiscal&&!frete&&target.empresa_id!==p.empresa_id)return [];
- const scopes=(targetUnits.data||[]).filter((x:any)=>x.user_id===r.user_id);if(fiscal&&scopes.length&&!scopes.some((x:any)=>ownUnits.has(x.establishment_id)))return [];
+ const scopes=(targetUnits.data||[]).filter((x:any)=>x.user_id===r.user_id);if(fiscal&&scopes.length&&!scopes.every((x:any)=>ownUnits.has(x.establishment_id)))return [];
  const master=["MASTER","ULTRA_ADMIN"].includes(target.role||target.perfil),canReset=!master||["MASTER","ULTRA_ADMIN"].includes(p.role||p.perfil);
  return [{...r,nome:target.full_name||target.nome,cpf:target.cpf,whatsapp:target.whatsapp,can_reset:canReset}];});
- return reply({roles:[{"value":"MASTER","label":"Master"},{"value":"ADMINISTRADOR","label":"Administrador"},{"value":"OPERADOR_GERAL","label":"Operador geral"},{"value":"OPERADOR_PATIO","label":"Operador de pátio"},{"value":"MOTORISTA","label":"Motorista"},{"value":"VENDEDOR_EXTERNO","label":"Vendedor externo"},{"value":"VENDEDOR_INTERNO","label":"Vendedor interno"}].filter(x=>x.value!=="MASTER"&&x.value!=="ADMINISTRADOR"||["MASTER","ULTRA_ADMIN"].includes(String(p.role||p.perfil))),pending:items,recoveries,units:units.data||[],message:items.length+" cadastro(s) e "+recoveries.length+" recuperação(ões) aguardando análise."});
+ return reply({roles:[{"value":"MASTER","label":"Master"},{"value":"ADMINISTRADOR","label":"Administrador"},{"value":"OPERADOR_GERAL","label":"Operador geral"},{"value":"OPERADOR_PATIO","label":"Operador de pátio"},{"value":"MOTORISTA","label":"Motorista"},{"value":"VENDEDOR_EXTERNO","label":"Vendedor externo"},{"value":"VENDEDOR_INTERNO","label":"Vendedor interno"}].filter(x=>x.value!=="MASTER"&&x.value!=="ADMINISTRADOR"||["MASTER","ULTRA_ADMIN"].includes(String(moduleContext.role||""))),pending:items,recoveries,units:units.data||[],message:items.length+" cadastro(s) e "+recoveries.length+" recuperação(ões) aguardando análise."});
 }
 if(action==="REVIEW"){
 if(!isAdmin)return reply({error:"Somente admin ou master aprovado pode analisar."},403);
+const targetRequest=await admin.from('access_requests').select('id').eq('id',b.id).eq('app',app).maybeSingle();if(targetRequest.error||!targetRequest.data)return reply({error:'Solicitação não pertence a este módulo.'},403);
 const reviewed=await admin.rpc("access_review_with_role",{p_request:b.id,p_actor:uid,p_decision:b.decision,p_role:typeof b.role==="string"?b.role:null,p_units:Array.isArray(b.units)?b.units:b.unit?[b.unit]:[],p_reason:b.reason||null});
 if(reviewed.error)return reply({error:reviewed.error.message||"Não foi possível registrar a decisão."},400);
 let metadataPending=false;
@@ -170,7 +191,7 @@ if(b.decision==="APROVADO"){
  const request=await admin.from("access_requests").select("user_id").eq("id",b.id).single();
  const target=request.data?.user_id?await admin.auth.admin.getUserById(request.data.user_id):null;
  if(request.error||target?.error||!target?.data.user)metadataPending=true;
- else{const synced=await admin.auth.admin.updateUserById(target.data.user.id,{app_metadata:{...target.data.user.app_metadata,role:reviewed.data.role}});metadataPending=Boolean(synced.error)}
+ else{const synced=await admin.auth.admin.updateUserById(target.data.user.id,{app_metadata:{...target.data.user.app_metadata,module_roles:{...(target.data.user.app_metadata?.module_roles||{}),[app]:reviewed.data.role}}});metadataPending=Boolean(synced.error)}
  if(metadataPending)await audit("CADASTRO_METADATA_PENDENTE",uid);
 }
 await audit("CADASTRO_"+b.decision,uid);return reply({message:metadataPending?"Acesso aprovado e perfil salvo. A sincronização dos dados de autenticação precisa ser conferida pelo administrador.":b.decision==="APROVADO"?"Acesso aprovado e perfil salvo. O usuário já pode entrar neste aplicativo.":"Acesso recusado. O usuário verá o motivo na sua tela de acesso.",...reviewed.data});
@@ -179,7 +200,7 @@ if(action!=="STATUS")return reply({error:"Ação inválida."},400);
 const active=Boolean(p.active??p.ativo)&&(!p.status_aprovacao||p.status_aprovacao==="APROVADO"),changing=Boolean(p.must_change_password||p.trocar_senha);
 const approved=managed?r?.status==="APROVADO":r?r.status==="APROVADO":legacyAllowed(p,app);
 const notes=r?await admin.from("access_notifications").select("id,event,message,created_at").eq("user_id",uid).eq("request_id",r.id).eq("audience","USER").order("created_at",{ascending:false}).limit(5):{data:[]};
-return reply({allowed:Boolean(approved&&active&&!changing),status:r?.status||(approved?"APROVADO":"SEM_SOLICITACAO"),isAdmin,changing,cpf:p.cpf,name:p.full_name||p.nome,notifications:notes.data||[]});
+return reply({allowed:moduleContext.allowed===true&&Boolean(active&&!changing),role:moduleContext.role,permissions:moduleContext.permissions,status:r?.status||(approved?"APROVADO":"SEM_SOLICITACAO"),isAdmin,changing,cpf:p.cpf,name:p.full_name||p.nome,notifications:notes.data||[]});
 }catch(error){
 if(admin&&createdId){await admin.from("access_requests").delete().eq("user_id",createdId);await admin.from("access_notifications").delete().eq("user_id",createdId);const fiscal=Deno.env.get("SUPABASE_URL")?.includes("xmfpvvmvdkepmnvtdoio"),frete=Deno.env.get("SUPABASE_URL")?.includes("nkynfboqwfxhhxcsrawl");if(frete)await admin.from("motoristas").delete().eq("auth_user_id",createdId);await admin.from(fiscal?"profiles":frete?"usuarios_app":"fc_perfis").delete().eq(fiscal?"id":"user_id",createdId);await admin.auth.admin.deleteUser(createdId)}
 const message=error instanceof Error?error.message:"Não foi possível concluir. Tente novamente.";return reply({error:message},/^(Informe|CPF|E-mail|A senha)/.test(message)?400:503);

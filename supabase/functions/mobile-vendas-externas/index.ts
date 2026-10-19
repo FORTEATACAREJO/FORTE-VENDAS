@@ -8,6 +8,7 @@ Deno.serve(async(req)=>{
   const userClient=createClient(url,anon,{global:{headers:{Authorization:auth}}}),admin=createClient(url,service);
   const{data:{user}}=await userClient.auth.getUser();if(!user)throw new Error("NÃO AUTORIZADO");
   const{data:p}=await admin.from("fc_perfis").select("*").eq("user_id",user.id).maybeSingle();if(!p?.ativo)throw new Error("PERFIL INATIVO");
+  const scope=await admin.rpc('access_module_context',{p_user:user.id,p_app:'venda-externa'});if(scope.error||!scope.data?.allowed)throw Error('APLICATIVO AGUARDANDO APROVAÇÃO');p.perfil=scope.data.role;
   const reqs=await admin.from("access_requests").select("app,status,managed_account").eq("user_id",user.id);if(reqs.error||reqs.data?.some((x:any)=>x.managed_account)&&!reqs.data?.some((x:any)=>x.app==="venda-externa"&&x.status==="APROVADO"))throw new Error("APLICATIVO AGUARDANDO APROVAÇÃO");if(p.status_aprovacao!=="APROVADO"||p.trocar_senha)throw new Error("ACESSO BLOQUEADO");const role=norm(p.perfil),priv=/MASTER|ADMINISTRADOR/.test(role);if(!priv&&!/VENDEDOR.*EXTERNO/.test(role)&&p.permissoes?.["venda-externa"]!==true)throw new Error("PERFIL SEM ACESSO À VENDA EXTERNA");
   const{data:row}=await admin.from("fc_app_state").select("*").eq("empresa_id",p.empresa_id).maybeSingle();const s=row?.estado||{},body=await req.json(),sellerId="auth-"+user.id;
   const mine=(x:any)=>priv||[sellerId,user.id,p.id,p.nome,user.email].some(v=>v&&[x.vendedorId,x.vendedorResponsavelId,x.vendedor,x.vendedorNome,x.criadoPor].some(y=>norm(y)===norm(v)));

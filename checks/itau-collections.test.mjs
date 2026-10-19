@@ -45,14 +45,14 @@ test('acesso exige sessão real e perfil aprovado; permissão financeira genéri
 });
 test('registro fica bloqueado por padrão e reserva já processada nunca chama o banco novamente',async()=>{
  const oldFetch=globalThis.fetch,oldEnabled=process.env.ITAU_EMISSION_ENABLED;let tokenCalls=0;
- globalThis.fetch=async(url,options)=>{let data;if(url.includes('/auth/v1/user'))data={id:'u1'};else if(url.includes('/fc_perfis'))data=[{ativo:true,status_aprovacao:'APROVADO',perfil:'MASTER',empresa_id:'e1'}];else if(url.includes('/fc_app_state'))data=[{estado:state,versao:1}];else if(url.includes('/fc_itau_reserve'))data={new:false,status:'PROCESSANDO'};else throw new Error('unexpected '+url);return {ok:true,json:async()=>data};};
+ globalThis.fetch=async(url,options)=>{let data;if(url.includes('/access_current_module'))data={allowed:true,role:'MASTER'};else if(url.includes('/auth/v1/user'))data={id:'u1'};else if(url.includes('/fc_perfis'))data=[{ativo:true,status_aprovacao:'APROVADO',perfil:'MASTER',empresa_id:'e1'}];else if(url.includes('/fc_app_state'))data=[{estado:state,versao:1}];else if(url.includes('/fc_itau_reserve'))data={new:false,status:'PROCESSANDO'};else throw new Error('unexpected '+url);return {ok:true,json:async()=>data};};
  try{delete process.env.ITAU_EMISSION_ENABLED;await assert.rejects(collectionsRequest({headers:{authorization:'Bearer token'}},{action:'REGISTER',boletoId:'b1'},()=>{tokenCalls++;}),{code:'EMISSION_NOT_ENABLED'});process.env.ITAU_EMISSION_ENABLED='true';assert.equal((await collectionsRequest({headers:{authorization:'Bearer token'}},{action:'REGISTER',boletoId:'b1'},()=>{tokenCalls++;})).pending,true);assert.equal(tokenCalls,0);}finally{globalThis.fetch=oldFetch;if(oldEnabled===undefined)delete process.env.ITAU_EMISSION_ENABLED;else process.env.ITAU_EMISSION_ENABLED=oldEnabled;}
 });
 test('teste isolado exige autorização, força validação e não grava estado ou reserva numeração',async()=>{
  const oldFetch=globalThis.fetch,oldRequest=https.request;let calls=0;
  globalThis.fetch=async(url,options)=>{
-  assert.equal(options.method,'GET');
-  const data=url.includes('/auth/v1/user')?{id:'u1'}:url.includes('/fc_perfis')?[{ativo:true,status_aprovacao:'APROVADO',perfil:'MASTER',empresa_id:'e1'}]:assert.fail('Teste não pode consultar ou alterar vendas');
+  assert.equal(options.method,url.includes('/access_current_module')?'POST':'GET');
+  const data=url.includes('/access_current_module')?{allowed:true,role:'MASTER'}:url.includes('/auth/v1/user')?{id:'u1'}:url.includes('/fc_perfis')?[{ativo:true,status_aprovacao:'APROVADO',perfil:'MASTER',empresa_id:'e1'}]:assert.fail('Teste não pode consultar ou alterar vendas');
   return {ok:true,json:async()=>data};
  };
  https.request=(url,options,callback)=>{assert.equal(url,BANK_URL);const req=new EventEmitter();req.setTimeout=()=>{};req.end=body=>{

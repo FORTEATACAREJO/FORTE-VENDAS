@@ -9,6 +9,7 @@ Deno.serve(async req=>{
   const {data:{user},error}=await caller.auth.getUser();if(error||!user)return Response.json({error:'Entre no sistema.'},{status:401,headers});
   const {data:p,error:pe}=await caller.from('fc_perfis').select('empresa_id,ativo,status_aprovacao,trocar_senha').eq('user_id',user.id).single();
   if(pe||!p.ativo||p.status_aprovacao!=='APROVADO'||p.trocar_senha)return Response.json({error:'Acesso não aprovado.'},{status:403,headers});
+  const module=await caller.rpc('access_current_module',{p_app:'vendas'});if(module.error||!module.data?.allowed)return Response.json({error:'Módulo sem aprovação.'},{status:403,headers});
   const response=await fetch('https://nkynfboqwfxhhxcsrawl.supabase.co/functions/v1/driver-directory',{method:'POST',headers:{Authorization:auth,apikey:'sb_publishable_7nIQ1MbqxonXl6cZqlP3IA_CK-gVLf9','Content-Type':'application/json'},body:JSON.stringify({source:'vendas'}),signal:AbortSignal.timeout(20000)});
   const remote=await response.json();if(!response.ok||!Array.isArray(remote.motoristas))throw Error(remote.error||'Não foi possível consultar o Forte Frete.');
   const admin=createClient(url,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
