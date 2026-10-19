@@ -9,9 +9,9 @@ for(const [name,url] of apps)test(`${name}: acesso, cadastro e recuperação pub
  await gate.getByRole('button',{name:/CRIAR.*RECUPERAR|RECUPERAR.*SENHA|ESQUECI/i}).click();
  await expect(gate.locator('select[name="canal"]')).toHaveValue('whatsapp');
  await gate.locator('select[name="canal"]').selectOption('email');await expect(gate.locator('input[name="contact"]')).toHaveAttribute('type','email');
- await gate.getByRole('button',{name:'PRIMEIRO CADASTRO',exact:true}).click();
+ const modern=['Vendas','Financeiro','Fiscal','Frete','Venda Externa'].includes(name);const strict=process.env.FORTE_QA_REQUIRE_MOBILE==='1'&&modern;await gate.getByRole('button',{name:name==='Frete'?'CADASTRAR COMO MOTORISTA':strict?'CADASTRAR':/^(CADASTRAR|PRIMEIRO CADASTRO)$/ ,exact:true}).click();
  await expect(gate.locator('input[name="nome"]')).toBeVisible();await expect(gate.locator('input[name="whatsapp"]')).toBeVisible();
- await expect(gate.locator('input[name="email"]')).not.toHaveAttribute('required','');
+ if(name==='Frete')await expect(gate.locator('input[name="email"]')).toHaveAttribute('required','');else await expect(gate.locator('input[name="email"]')).not.toHaveAttribute('required','');
  await expect(gate.locator('input[name="password"]')).toHaveAttribute('pattern','[0-9]{6,}');
  await expect(gate.locator('input[name="confirm"]')).toBeVisible();
  const width=await gate.evaluate(el=>({scroll:el.scrollWidth,width:el.clientWidth}));expect(width.scroll).toBeLessThanOrEqual(width.width+2);
