@@ -1,3 +1,4 @@
+import {findFreightRate,resolveFreightRate} from './freight-rates.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { applyWorkflow } from './domain.mjs';
 import { palletReleaseNeeded,mayReadDriverPayment } from './complements.mjs';
@@ -25,6 +26,7 @@ Deno.serve(async(req)=>{
     const out=await response.json();if(!response.ok||out.error)throw new Error(out.error||'Não foi possível sincronizar com o Forte Frete.');return out;
   }
 
+  if(b.action==='FREIGHT_RATES')return Response.json(await freteBridge('FREIGHT_RATES'),{headers:cors});
   if(b.action==='AI_EXTRACT'){
    const key=Deno.env.get('OPENAI_API_KEY');if(!key)throw new Error('Leitura por IA não configurada. O preenchimento manual está disponível.');
    if(!['application/pdf','image/jpeg','image/png','image/webp'].includes(b.mimeType)||!b.contentBase64||b.contentBase64.length>8_000_000)throw new Error('Anexe PDF ou imagem de até 5 MB.');
@@ -44,6 +46,15 @@ Deno.serve(async(req)=>{
   }
   if(b.action==='IMPORT_DRIVERS'){const remote=await freteBridge('LIST_DRIVERS');b.action='DRIVERS_IMPORTED';b.internalDrivers=remote.motoristas;}
   if(b.action==='PUBLISH_FRETE'){const c=(row.estado.cargas||[]).find(c=>c.id===b.cargaId&&c.status!=='CANCELADA');if(!c||palletReleaseNeeded(c))throw new Error('Carga inválida ou liberação de pallets pendente.');const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
+  if(b.action==='LOADING_SAVE'){
+   const current=(row.estado.cargas||[]).find(c=>c.id===b.cargaId),mode=current?.modalidadeFrete||b.modalidadeFrete;
+   const blank=b.fretePorTon===undefined||b.fretePorTon===null||typeof b.fretePorTon==='string'&&!b.fretePorTon.trim();
+   const selected=b.freteTarifaId;let rate;
+   if(mode==='CIF')rate={valor:0,fonte:'COMBINADO',tarifaId:null};
+   else if(blank){const remote=await freteBridge('FREIGHT_RATES');const tariff=findFreightRate(remote.tarifas,current?.localCarregamento||current?.origem||b.origem,current?.destino||b.destino,selected);rate=resolveFreightRate(b.fretePorTon,tariff);}
+   else rate=resolveFreightRate(b.fretePorTon,null);
+   b.fretePorTon=rate.valor;b.freteFonte=rate.fonte;b.freteTarifaId=rate.tarifaId;
+  }
   const out=applyWorkflow(row.estado,b,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
   if(!out.replayed){const {data:saved,error}=await stateClient.rpc('fc_gravar_workflow',{p_empresa:p.empresa_id,p_actor:user.id,p_versao:row.versao,p_estado:out.state});if(error||saved!==row.versao+1){if(!error||error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
   let warning=out.result.warning;
