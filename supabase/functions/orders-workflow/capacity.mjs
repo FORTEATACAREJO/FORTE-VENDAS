@@ -24,6 +24,8 @@ export function workflowCapacityCheck(state,body) {
  if(['SUPPLIER_SEND','SUPPLIER_RECEIPT','SUPPLIER_EXTERNAL_SEND'].includes(body.action)){
   const order=orders.find(o=>o.id===body.id);if(!order)return null;
   driverId=order.motoristaId;weight=order.pesoKg;
+ }else if(body.action==='LOAD_ASSIGN'){
+  const load=loads.find(c=>c.id===body.cargaId);if(!load)return null;weight=load.pesoKg;
  }else if(body.action==='LOAD_ADJUST'){
   const load=loads.find(c=>c.id===body.cargaId);if(!load)return null;
   driverId=load.motoristaId;
