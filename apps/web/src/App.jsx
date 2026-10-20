@@ -1,3 +1,4 @@
+import {registerFreightReceipt,openSharedProof} from "./freight-receipt-upload.js";
 import OperationSheet from "./OperationSheet.jsx";
 import {allocatedInvoice} from "./operation-sheet-model.mjs";
 import {OperationsMenu,OperationContextNav} from './OperationsNavigation.jsx';
@@ -1877,7 +1878,14 @@ export default function App() {
     if (!t) return;
     setModal({ type: "proof", titleId: id });
   }
-  function doProofPayment(titleId, file) {
+  async function doProofPayment(titleId, file) {
+    const title=data.contasPagar.find(t=>t.id===titleId);
+    if(/FRETE/i.test([title?.tipo,title?.categoria,title?.titulo,title?.origem].join(" "))){
+      const loads=(data.cargas||[]).filter(c=>c.status!=="CANCELADA"&&(c.id===title?.cargaId||c.id===title?.carga||c.codigo===title?.carga));
+      if(loads.length!==1)return alert("VINCULE ESTE TÍTULO À CARGA CORRETA ANTES DE ANEXAR O COMPROVANTE DE FRETE.");
+      try{await registerFreightReceipt(file,{data,cargaId:loads[0].id,onCommit:commitOrderWorkflow});setModal(null);alert("COMPROVANTE DE FRETE ANEXADO AO DOSSIÊ COMPARTILHADO. VALIDE O DOCUMENTO PARA DISTRIBUIR AO MOTORISTA.");}catch(e){alert(e.message);}
+      return;
+    }
     const id = uid("doc");
     putFile(id, file).then(() => {
       setData((d) => ({
@@ -2993,6 +3001,7 @@ export default function App() {
               data={data}
               onChange={setData}
               currentUser={currentUser}
+              onWorkflow={commitOrderWorkflow}
               onDireta={() => setTab("diretas")}
             />
             {panelLoads.length === 0 ? (
@@ -3159,10 +3168,10 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
-        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onDireta={()=>{}} />} /> }
+        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
         {tab === "comprasFornecedor" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onDireta={()=>{}} />} /> }
+        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
         {tab === "ordensCarregamento" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
@@ -3238,6 +3247,7 @@ export default function App() {
                 >
                   ANEXAR COMPROVANTE
                 </button>
+                {t.comprovanteFreteHash&&<button onClick={()=>{const doc=(data.documentos||[]).find(d=>d.id===t.comprovanteDocumentoId);openSharedProof(doc).catch(e=>alert(e.message));}}>ABRIR COMPROVANTE DE FRETE</button>}
                 {t.comprovanteDocumentoId &&
                   !upper(t.status).includes("LIQUIDADO") &&
                   !upper(t.status).includes("PAGO") &&
@@ -8706,7 +8716,7 @@ function ContaCorrenteFornecedores({ data, onChange, currentUser }) {
   );
 }
 
-function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
+function BancoNotasFiscais({ data, onChange, currentUser, onDireta,onWorkflow }) {
   const [historicoNotas,setHistoricoNotas]=useState(false);
   const [busca, setBusca] = useState("");
   const [links, setLinks] = useState({});
@@ -9006,6 +9016,11 @@ function BancoNotasFiscais({ data, onChange, currentUser, onDireta }) {
   }
   async function anexarDossie(n, tipo, file) {
     if (!file) return;
+    if(tipo==="COMPROVANTE DE PAGAMENTO DO FRETE"){
+      const cargaId=n.cargaId||links[n.id]||sugerida(n)?.id;
+      try{await registerFreightReceipt(file,{data,cargaId,onCommit:onWorkflow});alert("COMPROVANTE ANEXADO AO DOSSIÊ COMPARTILHADO. AGUARDA VALIDAÇÃO DO MASTER PARA DISTRIBUIÇÃO.");}catch(e){alert(e.message);}
+      return;
+    }
     const fileId = uid("docnf");
     const boleto=tipo==="BOLETO DO FORNECEDOR";
     let documentoPath="";
