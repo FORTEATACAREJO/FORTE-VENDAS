@@ -1,3 +1,4 @@
+import {freightReceipt} from './freight-receipts.mjs';
 import {findFreightRate,resolveFreightRate} from './freight-rates.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { applyWorkflow } from './domain.mjs';
@@ -20,7 +21,7 @@ Deno.serve(async(req)=>{
    const response=await fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/sync-frete-drivers',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(25000)});
    const result=await response.json();return Response.json(result,{status:response.status,headers:cors});
   }
-  if(['DRIVERS_IMPORTED','FRETE_PUBLISHED'].includes(b.action))throw new Error('Ação interna não permitida.');
+  if(['DRIVERS_IMPORTED','FRETE_PUBLISHED','PAYMENT_SYNC_RESULT'].includes(b.action))throw new Error('Ação interna não permitida.');
   async function freteBridge(action:string,cargaId?:string){
     const response=await fetch('https://nkynfboqwfxhhxcsrawl.supabase.co/functions/v1/vendas-frete-bridge',{method:'POST',headers:{Authorization:auth,apikey:'sb_publishable_7nIQ1MbqxonXl6cZqlP3IA_CK-gVLf9','Content-Type':'application/json'},body:JSON.stringify({action,cargaId}),signal:AbortSignal.timeout(20000)});
     const out=await response.json();if(!response.ok||out.error)throw new Error(out.error||'Não foi possível sincronizar com o Forte Frete.');return out;
@@ -55,13 +56,29 @@ Deno.serve(async(req)=>{
    else rate=resolveFreightRate(b.fretePorTon,null);
    b.fretePorTon=rate.valor;b.freteFonte=rate.fonte;b.freteTarifaId=rate.tarifaId;
   }
+  async function distributeReceipt(cargaId:string,documentoId?:string){
+   // Reload before sending and use the validated file, supplier order and driver as a single identity.
+   const fresh=await stateClient.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(fresh.error||!fresh.data)throw Error('Atualize os dados antes de distribuir.');
+   const {load,document}=freightReceipt(fresh.data.estado,cargaId,documentoId);let ok=false,errorMessage='';
+   try{const remote=await freteBridge('SYNC_PAYMENT',cargaId);ok=remote.ok===true&&remote.comprovanteHash===document.hash;if(!ok)throw Error('O destino não confirmou o mesmo arquivo.');}catch(e){errorMessage=String(e.message||e);}
+   const syncBody={action:'PAYMENT_SYNC_RESULT',requestId:crypto.randomUUID(),cargaId,documentoId:document.id,internalHash:document.hash,internalPedido:load.numeroPedidoFornecedor,internalMotorista:load.motoristaId,internalOk:ok,internalError:errorMessage};
+   for(let attempt=0;attempt<3;attempt++){
+    const latest=await stateClient.from('fc_app_state').select('estado,versao').eq('empresa_id',p.empresa_id).single();if(latest.error||!latest.data)throw Error('Distribuição executada; atualize para conferir o registro.');
+    const synced=applyWorkflow(latest.data.estado,syncBody,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
+    const saved=await stateClient.rpc('fc_gravar_workflow',{p_empresa:p.empresa_id,p_actor:user.id,p_versao:latest.data.versao,p_estado:synced.state});
+    if(!saved.error&&saved.data===latest.data.versao+1)return {...synced.result,warning:ok?undefined:'Comprovante validado e vinculado internamente. Distribuição ao Forte Frete pendente: '+errorMessage};
+    if(saved.error&&saved.error.code!=='40001')throw Error(saved.error.message);
+   }
+   throw Error('Distribuição executada; o registro aguarda nova tentativa após atualização.');
+  }
+  if(b.action==='PAYMENT_SYNC')return Response.json({ok:true,...await distributeReceipt(b.cargaId,b.documentoId)},{headers:cors});
   const out=applyWorkflow(row.estado,b,p,{id:crypto.randomUUID(),at:new Date().toISOString()});
   if(!out.replayed){const {data:saved,error}=await stateClient.rpc('fc_gravar_workflow',{p_empresa:p.empresa_id,p_actor:user.id,p_versao:row.versao,p_estado:out.state});if(error||saved!==row.versao+1){if(!error||error.code==='40001')return Response.json({error:'Outra pessoa atualizou os dados. Atualize e tente novamente.'},{status:409,headers:cors});throw new Error(error.message);}}
   let warning=out.result.warning;
   if(b.action==='DOCUMENT_VALIDATE'){
     const doc=(out.state.documentos||[]).find(d=>d.id===b.documentoId);
     const load=(out.state.cargas||[]).find(c=>c.id===b.cargaId);
-    if(doc?.categoria==='COMPROVANTE FRETE'&&load?.numeroPedidoFornecedor&&load?.motoristaId){try{await freteBridge('SYNC_PAYMENT',b.cargaId);}catch(e){warning='Documento validado. A sincronização do comprovante com o Forte Frete ficou pendente: '+e.message;}}
+    if(doc?.categoria==='COMPROVANTE FRETE'){try{warning=(await distributeReceipt(b.cargaId,doc.id)).warning;}catch(e){warning='Documento validado e vinculado internamente. A distribuição continua pendente: '+e.message;}}
   }
   if(!out.replayed&&['SUPPLIER_SEND','SALE_CREATE','EXTERNAL_ACCEPT','SALE_EDIT','SALE_ADJUST','LOADING_SAVE','SALE_LINK','LOAD_FINALIZE'].includes(b.action)&&typeof EdgeRuntime!=='undefined'){
     EdgeRuntime.waitUntil(fetch(Deno.env.get('SUPABASE_URL')+'/functions/v1/order-communications',{method:'POST',headers:{Authorization:auth,apikey:Deno.env.get('SUPABASE_ANON_KEY')!,'Content-Type':'application/json'},body:JSON.stringify({action:'DISPATCH'}),signal:AbortSignal.timeout(55000)}).catch(()=>{}));
