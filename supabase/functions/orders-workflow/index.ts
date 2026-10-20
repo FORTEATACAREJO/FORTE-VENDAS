@@ -47,7 +47,7 @@ Deno.serve(async(req)=>{
   }
   if(b.action==='IMPORT_DRIVERS'){const remote=await freteBridge('LIST_DRIVERS');b.action='DRIVERS_IMPORTED';b.internalDrivers=remote.motoristas;}
   if(b.action==='PUBLISH_FRETE'){const c=(row.estado.cargas||[]).find(c=>c.id===b.cargaId&&c.status!=='CANCELADA');if(!c||palletReleaseNeeded(c))throw new Error('Carga inválida ou liberação de pallets pendente.');const remote=await freteBridge('PUBLISH',b.cargaId);b.action='FRETE_PUBLISHED';b.internalReceipt=remote;}
-  if(b.action==='LOADING_SAVE'){
+  if(b.action==='FREIGHT_SAVE'){
    const current=(row.estado.cargas||[]).find(c=>c.id===b.cargaId),mode=current?.modalidadeFrete||b.modalidadeFrete;
    const blank=b.fretePorTon===undefined||b.fretePorTon===null||typeof b.fretePorTon==='string'&&!b.fretePorTon.trim();
    const selected=b.freteTarifaId;let rate;
