@@ -1,3 +1,4 @@
+import EditSale from './EditSale.jsx';
 import WorkspaceMenu from './WorkspaceMenu.jsx';
 import {workspaceNavigation} from './workspace-navigation.mjs';
 import {registerFreightReceipt,openSharedProof} from "./freight-receipt-upload.js";
@@ -3288,26 +3289,8 @@ export default function App() {
           sale={data.vendas.find((v) => v.id === modal.saleId)}
           data={data}
           onClose={() => setModal(null)}
-          onSave={(nv) => {
-            setData((d) => ({
-              ...d,
-              vendas: d.vendas.map((v) => (v.id === nv.id ? nv : v)),
-              cargas: d.cargas.map((c) => {
-                if (!(c.vendaIds || []).includes(nv.id)) return c;
-                const vs = d.vendas
-                  .map((v) => (v.id === nv.id ? nv : v))
-                  .filter((v) => (c.vendaIds || []).includes(v.id));
-                return {
-                  ...c,
-                  pesoKg: vs.reduce((s, v) => s + Number(v.pesoKg || 0), 0),
-                  qtd: vs.reduce((s, v) => s + Number(v.qtd || 0), 0),
-                  status: "VERMELHO",
-                  fase: "REVALIDAÇÃO APÓS EDIÇÃO DA VENDA",
-                };
-              }),
-            }));
-            setModal(null);
-          }}
+          canEdit={canAccessTab("clientes","editar")}
+          onCommit={commitOrderWorkflow}
         />
       )}{" "}
       {modal?.type === "load" && (
