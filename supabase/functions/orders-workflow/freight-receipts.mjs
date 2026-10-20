@@ -2,6 +2,8 @@ const fail=m=>{throw Error(m)};
 export function freightReceipt(state,cargaId,documentoId){
  const load=(state.cargas||[]).find(c=>c.id===cargaId&&c.status!=='CANCELADA')||fail('Carga não localizada.');
  if(load.modalidadeFrete==='CIF')fail('CIF não possui comprovante de frete separado.');
+ if(documentoId&&load.comprovanteFreteDocumentoId&&documentoId!==load.comprovanteFreteDocumentoId)fail('O comprovante foi substituído. Distribua o arquivo atual da carga.');
+ documentoId=documentoId||load.comprovanteFreteDocumentoId;
  const document=(state.documentos||[]).find(d=>d.cargaId===load.id&&d.categoria==='COMPROVANTE FRETE'&&(!documentoId||d.id===documentoId)&&d.validationStatus==='VALIDADO'&&d.validadoFinanceiroPor&&d.storagePath&&d.hash)||fail('Valide o comprovante de frete antes de distribuir.');
  if(!load.numeroPedidoFornecedor||!load.motoristaId)fail('Vincule o pedido oficial e o motorista antes de distribuir.');
  return {load,document};
