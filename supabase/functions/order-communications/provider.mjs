@@ -2,7 +2,7 @@ export function templatePayload(job,name,documentId){
  if(!name)throw new Error('MODELO APROVADO NÃO CONFIGURADO: '+job.kind);
  const components=[];
  if(documentId)components.push({type:'header',parameters:[{type:'document',document:{id:documentId,filename:job.reference+'.pdf'}}]});
- components.push({type:'body',parameters:[{type:'text',text:job.reference},{type:'text',text:job.kind==='FORNECEDOR'?job.reference:job.items.map(i=>i.qtd+' de '+i.produto).join('; ')}]});
+ components.push({type:'body',parameters:[{type:'text',text:job.reference},{type:'text',text:job.kind==='FORNECEDOR'?job.reference:job.kind==='ORDEM_MOTORISTA'?String(job.order?.origem||'Carregamento confirmado'):job.items.map(i=>i.qtd+' de '+i.produto).join('; ')}]});
  if(job.kind==='ENTREGA')for(const [index,answer] of ['SIM','NAO'].entries())components.push({type:'button',sub_type:'quick_reply',index:String(index),parameters:[{type:'payload',payload:job.replyToken+':'+answer}]});
  return {messaging_product:'whatsapp',to:job.to,type:'template',template:{name,language:{code:'pt_BR'},components}};
 }
@@ -13,5 +13,5 @@ export async function validSignature(raw,signature,secret){
  return crypto.subtle.verify('HMAC',key,bytes,new TextEncoder().encode(raw));
 }
 export function applyStatuses(state,statuses){
- for(const status of statuses||[]){const jobs=(state.comunicacoes||[]).filter(j=>j.providerId===status.id);for(const j of jobs){j.providerEvents??=[];if(j.providerEvents.some(e=>e.status===status.status&&e.timestamp===status.timestamp))continue;j.providerEvents.push({status:status.status,timestamp:status.timestamp});const rank={SENDING:0,SENT:1,DELIVERED:2,READ:3},next={sent:'SENT',delivered:'DELIVERED',read:'READ',failed:'FAILED'}[status.status];if(next==='FAILED'&&!['DELIVERED','READ'].includes(j.state)){j.state='FAILED';j.reason='PROVEDOR INFORMOU FALHA';}else if(next&&rank[next]>=(rank[j.state]??-1))j.state=next;}}
+ for(const status of statuses||[]){const jobs=(state.comunicacoes||[]).filter(j=>j.providerId===status.id);for(const j of jobs){j.providerEvents??=[];if(j.providerEvents.some(e=>e.status===status.status&&e.timestamp===status.timestamp))continue;j.providerEvents.push({status:status.status,timestamp:status.timestamp});const rank={SENDING:0,SENT:1,DELIVERED:2,READ:3},next={sent:'SENT',delivered:'DELIVERED',read:'READ',failed:'FAILED'}[status.status];if(next==='FAILED'&&!['DELIVERED','READ'].includes(j.state)){j.state='FAILED';j.reason='PROVEDOR INFORMOU FALHA';}else if(next&&rank[next]>=(rank[j.state]??-1))j.state=next;const load=(state.cargas||[]).find(c=>c.id===j.cargaId&&c.ordemMensagemId===status.id&&c.motoristaId===j.motoristaId&&c.numeroPedidoFornecedor===j.reference);if(j.audience==='MOTORISTA'&&load&&['DELIVERED','READ'].includes(j.state)){if(j.state==='DELIVERED')load.ordemEntregueEm=status.timestamp;if(j.state==='READ')load.ordemLidaEm=status.timestamp;}}}
 }
