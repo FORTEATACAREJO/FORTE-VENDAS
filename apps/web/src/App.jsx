@@ -1,3 +1,5 @@
+import WorkspaceMenu from './WorkspaceMenu.jsx';
+import {workspaceNavigation} from './workspace-navigation.mjs';
 import {registerFreightReceipt,openSharedProof} from "./freight-receipt-upload.js";
 import OperationSheet from "./OperationSheet.jsx";
 import {allocatedInvoice} from "./operation-sheet-model.mjs";
@@ -885,7 +887,7 @@ export default function App() {
   };
   const canAccessTab = (screen, action = "visualizar") => canAccessGroup(groupForTab(screen), action);
   const salesArea=salesAreaFor(tab);
-  const visibleModuleGroups = MODULE_GROUPS.filter((g) => canAccessGroup(g.id));
+  const navigation = workspaceNavigation(canAccessGroup,canAccessTab);
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
     if (tab !== "home" && requestedGroup && !canAccessGroup(requestedGroup))
@@ -2165,84 +2167,22 @@ export default function App() {
     .reverse();
   return (
     <div className="app forte-ui forte-vendas">
-      {cloudError&&<div role="alert" className="alert warn" style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,padding:16}}>{cloudError}</div>}
       <SefazAutoSync data={data} onChange={setData} currentUser={currentUser} />
       <Drawer drawer={drawer}><button onClick={()=>setModal({type:"ajudaIa",tab})}>Ajuda IA</button>
         <div className="sideBrand">
           <b>FORTE VENDAS</b>
           <small>Gestão de Cargas e Vendas</small>
         </div>
-        <button
-          className={tab === "home" ? "sideActive" : ""}
-          onClick={() => setTab("home")}
-        >
-          ⌂ PAINEL PRINCIPAL
-        </button>
-        {canAccessGroup("vendas") && <button
-          className={tab === "group:vendas" ? "sideActive" : ""}
-          onClick={() => setTab("group:vendas")}
-        >
-          ▦ VENDAS E COMPRAS
-        </button>}
-        {canAccessGroup("vendas") && <button className={tab==="diretas"?"sideActive":""} onClick={()=>setTab("diretas")}>▣ VENDAS DIRETAS</button>}
-        {canAccessGroup("logistica") && <button
-          className={tab === "group:logistica" ? "sideActive" : ""}
-          onClick={() => setTab("group:logistica")}
-        >
-          ▣ LOGÍSTICA E OPERAÇÃO
-        </button>}
-        {canAccessGroup("conferencia") && <button
-          className={tab === "group:conferencia" ? "sideActive" : ""}
-          onClick={() => setTab("group:conferencia")}
-        >
-          ✓ CONFERÊNCIA / IA
-        </button>}
-        {canAccessGroup("cobrancas") && (
-          <button
-            className={tab === "group:cobrancas" ? "sideActive" : ""}
-            onClick={() => setTab("group:cobrancas")}
-          >
-            $ COBRANÇAS ITAÚ
-          </button>
-        )}
-        {canAccessGroup("fornecedores") && <button
-          className={tab === "group:fornecedores" ? "sideActive" : ""}
-          onClick={() => setTab("group:fornecedores")}
-        >
-          ▤ FORNECEDORES / SUPRIMENTOS
-        </button>}
-        {canAccessGroup("financeiro") && <button className={tab === "group:financeiro" ? "sideActive" : ""} onClick={() => setTab("group:financeiro")}>$ FINANCEIRO</button>}
-        {canAccessGroup("cadastros") && <button
-          className={tab === "group:cadastros" ? "sideActive" : ""}
-          onClick={() => setTab("group:cadastros")}
-        >
-          ⚙ CADASTROS / CONFIGURAÇÕES
-        </button>}
-        {canAccessGroup("relatorios") && <button
-          className={tab === "group:relatorios" ? "sideActive" : ""}
-          onClick={() => setTab("group:relatorios")}
-        >
-          ▥ RELATÓRIOS
-        </button>}
-        {canAccessGroup("patio") && <button
-          className={tab === "group:patio" ? "sideActive" : ""}
-          onClick={() => setTab("group:patio")}
-        >
-          ▣ PÁTIO / ESTOQUE
-        </button>}
-        {canAccessGroup("integracoes") && <button
-          className={tab === "group:integracoes" ? "sideActive" : ""}
-          onClick={() => setTab("group:integracoes")}
-        >
-          ⌁ INTEGRAÇÕES
-        </button>}
+        <WorkspaceMenu navigation={navigation} screen={tab} group={tab.startsWith("group:")?tab.slice(6):groupForTab(tab)} onNavigate={setTab}/>
         <div className="sideVersion">
           <small>VERSÃO</small>
           <b>V6.9.0</b>
-          <span>● Online</span>
+          <span>{cloudError?"⚠ Gravação pendente":"● Conectado"}</span>
+          <small className="workspace-release">Menu unificado · 20/10/2026</small>
         </div>
       </Drawer>
       <main className="main">
+        {cloudError&&<div role="alert" className="workspace-cloud-error"><b>Gravação pendente</b><p>{cloudError}</p></div>}
         <header className="header dashboardHeader forte-header"><MenuButton drawer={drawer}/><Brand label="FORTE VENDAS"/>
           <div>
 
@@ -2404,11 +2344,9 @@ export default function App() {
           <HomeCompactV47
             data={data}
             onSale={()=>setModal({type:"sale"})}
-            groups={visibleModuleGroups}
-            canIntegrations={canAccessGroup("integracoes")}
-            onOpen={(id) => setTab("group:" + id)}
-            onGmail={() => setModal({ type: "integracoes" })}
-            onFinance={() => setModal({ type: "integracoesFinanceiras" })}
+            navigation={navigation}
+            canSell={canAccessGroup("vendas")}
+            onNavigate={setTab}
           />
         )}
         <div className="systemDate">
