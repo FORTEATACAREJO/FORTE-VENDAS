@@ -1,3 +1,4 @@
+import {purchaseDocument} from '../../../supabase/functions/order-communications/order-document.mjs';
 import {jsPDF} from 'jspdf';
 const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const date=n=>n?new Date(n).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'—';
@@ -10,18 +11,7 @@ export function reportPDF(title,sections,{generatedAt=new Date().toISOString(),p
  const total=d.getNumberOfPages();for(let n=1;n<=total;n++){d.setPage(n);d.setFontSize(8);d.setTextColor(85);d.text('Forte Atacarejo • (34) 99920-9335',14,288);d.text(n+' / '+total,190,288,{align:'right'});}
  return d;
 }
-export function purchaseReport(order,driver=false){
- const official=String(order.numeroPedidoFornecedor||'').trim();
- if(driver&&!official)throw new Error('Confirme o número oficial do pedido do fornecedor antes de gerar a ordem.');
- const identity=['Ordem interna / carga: '+(order.numero||order.codigo||order.id),'Fornecedor: '+order.fornecedor,'Unidade compradora: '+order.unidade,'RETIRAR EM: '+(order.localCarregamento||order.origem),'Destino: '+order.destino,'Data de carregamento: '+(order.dataCarregamento||'A definir')];
- const transport=['Motorista: '+(order.motorista||'A definir'),'Placas: '+(order.placas||[]).join(' / '),'Pallets: '+order.regraPallets+' • '+order.palletQuantidade,...['cpf','cnhNumero','rntrc'].filter(k=>order.motoristaSnapshot?.[k]).map(k=>({cpf:'CPF',cnhNumero:'CNH',rntrc:'RNTRC'})[k]+': '+order.motoristaSnapshot[k]),...(order.justificativaPallets?['Observação de pallets: '+order.justificativaPallets]:[]),...(order.liberacaoPalletsFornecedor?.evidencia?['Autorização de pallets do fornecedor: '+order.liberacaoPalletsFornecedor.evidencia]:[])];
- return reportPDF(driver?'ORDEM DE CARREGAMENTO':'ESPELHO DO PEDIDO AO FORNECEDOR',[
- {title:'Identificação',rows:driver?identity:[...identity,'Pedido fornecedor: '+(official||'Aguardando retorno'),'Código cliente Forte no fornecedor: '+(order.codigoFornecedor||order.fornecedorSnapshot?.codigoCliente||order.fornecedorSnapshot?.codigoForte||'Não informado')]},
- {title:'Transporte e pallets',rows:driver?transport:[...transport,'Pagamento: '+(order.pagamento||order.condicaoFornecedor||'—'),'Modalidade: '+order.modalidadeFrete,'Tipo de compra: '+(order.modalidadeCompra||'PADRAO')]},
- {title:'Itens do pedido',rows:(order.itens||[]).map(i=>i.produto+' • '+i.qtd+' unidades • '+Number(i.pesoKg/1000).toLocaleString('pt-BR')+' t'+(driver?'':' • Unitário '+money(i.custoUnitario)+' • Total '+money(i.total)))},
- {title:'Totais',rows:['Quantidade: '+(order.itens||[]).reduce((a,i)=>a+Number(i.qtd),0),'Peso: '+Number(order.pesoKg/1000).toLocaleString('pt-BR')+' t',...(driver?[]:['Total da compra: '+money((order.itens||[]).reduce((a,i)=>a+Number(i.total),0))])]}
- ],{primaryReference:driver?official:''});
-}
+export function purchaseReport(order,driver=false){return purchaseDocument(jsPDF,order,driver);}
 export function loadReport(data,c){return reportPDF('DOSSIÊ DA CARGA • '+c.codigo,[
  {title:'Carga e pedido',rows:[c.codigo+' • '+c.fase,'Fornecedor: '+c.fornecedor,'Pedido: '+(c.numeroPedidoFornecedor||'Aguardando'),'Motorista: '+(c.motorista||'A definir'),'Placas: '+(c.placas||[]).join(' / '),'Destino: '+c.destino]},
  {title:'Distribuição aos clientes',rows:(data.vendas||[]).filter(v=>(c.vendaIds||[]).includes(v.id)).map(v=>v.numeroVenda+' • '+v.cliente+' • '+v.qtd+' de '+v.produto)},
