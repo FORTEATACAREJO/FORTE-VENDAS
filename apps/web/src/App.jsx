@@ -9,6 +9,7 @@ import {OperationsMenu,OperationContextNav} from './OperationsNavigation.jsx';
 import {salesAreaFor,salesBottomTab} from './operations-navigation.mjs';
 import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {createItauTestPDF} from './itau-test-pdf.js';
+import ItauStandalone from './ItauStandalone.jsx';
 import {registryConflict} from "./registry-identity.js";
 import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
@@ -857,7 +858,7 @@ export default function App() {
       const response=await fetch('https://forte-itau-api.onrender.com/api/itau/collections',{method:'POST',headers:{Authorization:'Bearer '+session.session.access_token,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(90000)});
       const receipt=await response.json();
       if(!response.ok||receipt.error)throw new Error(receipt.error||'Não foi possível confirmar a cobrança.');
-      if(body.action==='REGISTER'){const remote=await loadCloudState();if(!remote)throw new Error('Atualize os dados para conferir a cobrança.');setData(applyAuthUser(remote));}
+      if(['REGISTER','CREATE_STANDALONE'].includes(body.action)){const remote=await loadCloudState();if(!remote)throw new Error('Atualize os dados para conferir a cobrança.');setData(applyAuthUser(remote));}
       return receipt;
     }finally{workflowBusy.current=false;}
   }
@@ -3259,6 +3260,7 @@ export default function App() {
         {tab === "itau" && (
           <section className="card">
             <div className="sectionHead"><div><h2>COBRANÇAS ITAÚ</h2><p>BOLETOS DE CLIENTES, VENCIDOS, CORREÇÕES, REEMISSÕES, REENVIOS E OCORRÊNCIAS. SEM ACESSO A SALDOS, DRE OU PAGAMENTOS A FORNECEDORES.</p></div><button onClick={() => setModal({ type: "emissorBoletos", canal: "COBRANÇA ITAÚ" })}>EMITIR / CORRIGIR BOLETO</button></div>
+            <button type="button" onClick={()=>setModal({type:'boletoAvulso'})}>NOVO BOLETO AVULSO</button>
             <ItauCollectionsReport data={data} />
             <RecebiveisItau data={data} onChange={setData} />
             <FrancesinhaItau data={data} />
@@ -3376,6 +3378,7 @@ export default function App() {
           onClose={() => setModal(null)}
         />
       )}{" "}
+      {modal?.type === 'boletoAvulso' && <ItauStandalone data={data} onBankAction={commitItauCollection} onClose={()=>setModal(null)}/>}
       {modal?.type === "proof" && (
         <ProofModal
           titleId={modal.titleId}

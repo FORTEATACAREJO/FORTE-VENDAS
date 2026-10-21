@@ -20,7 +20,14 @@ function date(value){const d=String(value||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(d)
 const percent=n=>{n=Number(n);if(!Number.isFinite(n)||n<0||n>99.99)throw error('Juros ou multa inválidos.');return String(Math.round(n*100000)).padStart(12,'0');};
 export function sourceBill(state,id){
  const bill=(state.boletosClientes||[]).find(b=>b.id===id);
- if(!bill)throw error('Prepare e salve os títulos da venda antes de validar no Itaú.');
+ if(!bill||bill.status==='CANCELADO')throw error('Prepare e salve o título antes de validar no Itaú.');
+ if(bill.origem==='AVULSO'){
+  if(bill.canal!=='BOLETO AVULSO'||bill.vendaId||bill.vendaIds?.length||!String(bill.motivo||'').trim()||String(bill.motivo).length>200||bill.parcela!==1||bill.totalParcelas!==1||bill.especieCodigo!=='99')throw error('Boleto avulso inválido. Confira o motivo e os vínculos.');
+  cents(bill.valor);
+  const customer=(state.clientes||[]).find(c=>c.id===bill.clienteId);
+  if(!customer)throw error('Cliente da cobrança não localizado.');
+  return {bill,customer};
+ }
  const source=bill.canal==='VENDA BALCÃO'?'vendasBalcao':'vendas';
  const sales=(state[source]||[]).filter(v=>(bill.vendaIds||[bill.vendaId]).includes(v.id)||v.id===bill.vendaId||(v.grupoPedidoId&&v.grupoPedidoId===bill.vendaId));
  if(!sales.length||sales.some(v=>v.status==='CANCELADA')||(source==='vendasBalcao'&&sales.some(v=>v.status!=='CONCLUÍDA')))throw error('Venda inválida ou não concluída.');
@@ -44,7 +51,7 @@ export function buildPayload(bill,customer,ourNumber,mode='validacao'){
  const due=date(bill.vencimento);if(due<today())throw error('Informe um vencimento a partir de hoje.');
  const pessoa={nome_pessoa:name,tipo_pessoa:{codigo_tipo_pessoa:document.length===14?'J':'F',[document.length===14?'numero_cadastro_nacional_pessoa_juridica':'numero_cadastro_pessoa_fisica']:document}};
  const juros=Number(bill.jurosMes||0),multa=Number(bill.multa||0);percent(juros);percent(multa);
- return {etapa_processo_boleto:mode,codigo_canal_operacao:'API',beneficiario:{id_beneficiario:'434300988616'},dado_boleto:{descricao_instrumento_cobranca:'boleto',tipo_boleto:'a vista',forma_envio:'impressao',codigo_carteira:'109',codigo_tipo_vencimento:3,codigo_especie:'01',codigo_aceite:'N',data_emissao:today(),pagamento_parcial:false,pagador:{pessoa,endereco:address},dados_individuais_boleto:[{numero_nosso_numero:String(ourNumber),data_vencimento:due,valor_titulo:String(cents(bill.valor)).padStart(17,'0'),texto_seu_numero:text(bill.numeroVenda,10),texto_uso_beneficiario:text(bill.id,25)}],juros:juros?{codigo_tipo_juros:'90',quantidade_dias_juros:1,percentual_juros:percent(juros)}:{codigo_tipo_juros:'05'},multa:multa?{codigo_tipo_multa:'02',quantidade_dias_multa:1,percentual_multa:percent(multa)}:{codigo_tipo_multa:'03'},desconto_expresso:false,recebimento_divergente:{codigo_tipo_autorizacao:'01'}}};
+ return {etapa_processo_boleto:mode,codigo_canal_operacao:'API',beneficiario:{id_beneficiario:'434300988616'},dado_boleto:{descricao_instrumento_cobranca:'boleto',tipo_boleto:'a vista',forma_envio:'impressao',codigo_carteira:'109',codigo_tipo_vencimento:3,codigo_especie:bill.origem==='AVULSO'?'99':'01',codigo_aceite:'N',data_emissao:today(),pagamento_parcial:false,pagador:{pessoa,endereco:address},dados_individuais_boleto:[{numero_nosso_numero:String(ourNumber),data_vencimento:due,valor_titulo:String(cents(bill.valor)).padStart(17,'0'),texto_seu_numero:text(bill.numeroVenda||bill.referencia,10),texto_uso_beneficiario:text(bill.id,25)}],juros:juros?{codigo_tipo_juros:'90',quantidade_dias_juros:1,percentual_juros:percent(juros)}:{codigo_tipo_juros:'05'},multa:multa?{codigo_tipo_multa:'02',quantidade_dias_multa:1,percentual_multa:percent(multa)}:{codigo_tipo_multa:'03'},desconto_expresso:false,recebimento_divergente:{codigo_tipo_autorizacao:'01'}}};
 }
 export function normalizeReceipt(body,payload){
  const data=body?.data,individual=data?.dado_boleto?.dados_individuais_boleto;
@@ -91,6 +98,14 @@ export async function collectionsRequest(req,input,requestToken){
   const payload=buildPayload(bill,customer,'00000001','validacao');
   const token=await requestToken();
   return {ok:true,registered:false,test:true,receipt:await bankRequest(payload,token.access_token)};
+ }
+ if(input.action==='CREATE_STANDALONE'){
+  if(!/^[a-f0-9-]{36}$/i.test(input.requestId||''))throw error('Identificador da solicitação inválido.');
+  const rows=await cloud('/rest/v1/fc_app_state?select=estado,versao&empresa_id=eq.'+profile.empresa_id);
+  const draft={id:'avulso-'+input.requestId,origem:'AVULSO',canal:'BOLETO AVULSO',clienteId:input.clienteId,motivo:String(input.motivo||'').trim(),referencia:String(input.referencia||'').trim(),valor:input.valor,vencimento:input.vencimento,jurosMes:input.jurosMes,multa:input.multa,especieCodigo:'99',parcela:1,totalParcelas:1};
+  const {customer}=sourceBill({...rows[0]?.estado,boletosClientes:[draft]},draft.id);
+  buildPayload(draft,customer,'00000001');
+  return cloud('/rest/v1/rpc/fc_itau_create_standalone',{p_request:input.requestId,p_cliente:input.clienteId,p_motivo:draft.motivo,p_referencia:draft.referencia,p_valor:draft.valor,p_vencimento:draft.vencimento,p_juros:Number(draft.jurosMes||0),p_multa:Number(draft.multa||0)});
  }
  if(!['VALIDATE','REGISTER','STATUS'].includes(input.action)||typeof input.boletoId!=='string'||input.boletoId.length>100)throw error('Operação de cobrança inválida.');
  if(input.action==='STATUS')return cloud('/rest/v1/fc_itau_ledger?select=receipt,status,boleto_id&boleto_id=eq.'+encodeURIComponent(input.boletoId)+'&empresa_id=eq.'+profile.empresa_id);
