@@ -1,3 +1,4 @@
+import {classifyPalletDocument} from './pallets.mjs';
 import {supplierDispatchCapacity} from '../orders-workflow/capacity.mjs';
 import {jsPDF} from 'npm:jspdf@4.2.1';
 import {orderMime} from './mime.mjs';
@@ -37,14 +38,15 @@ async function worker(){const owner=crypto.randomUUID();if(!ok(await db.rpc('gma
  const a=p.body?.attachmentId?await api(t,'/messages/'+m.message_id+'/attachments/'+p.body.attachmentId):p.body;
  if(!a?.data)throw Error('ANEXO_SEM_CONTEUDO');const bytes=decodeBytes(a.data);if(bytes.length>20*1024*1024)throw Error('ANEXO_EXCEDE_20MB');
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(x=>x.toString(16).padStart(2,'0')).join(''),path=c.empresa_id+'/'+hash;
- let desc:any;try{
+ let desc:any,pdfText="";try{
  if(/\.xml$/i.test(p.filename)){
  const raw=new TextDecoder().decode(bytes);if(/<!DOCTYPE|<!ENTITY/i.test(raw))throw Error('XML_COM_ENTIDADE_NAO_PERMITIDA');if(XMLValidator.validate(raw)!==true)throw Error('XML_INVALIDO');
  desc=parseNfe(new XMLParser({ignoreAttributes:false,parseTagValue:false,processEntities:false}).parse(raw),recipients);
  }else if(/\.pdf$/i.test(p.filename)||p.mimeType==='application/pdf'){
- const pdf=await getDocumentProxy(bytes,{isEvalSupported:false});try{if(pdf.numPages>50)throw Error('PDF_EXCEDE_50_PAGINAS');desc=parsePdfText((await extractText(pdf,{mergePages:true})).text);}finally{await pdf.loadingTask.destroy();}
+ const pdf=await getDocumentProxy(bytes,{isEvalSupported:false});try{if(pdf.numPages>50)throw Error('PDF_EXCEDE_50_PAGINAS');pdfText=(await extractText(pdf,{mergePages:true})).text;desc=parsePdfText(pdfText);}finally{await pdf.loadingTask.destroy();}
  }else desc={kind:'DOCUMENTO',issues:['TIPO_DOCUMENTAL_A_CLASSIFICAR']};
  }catch(e){desc={kind:'DOCUMENTO',issues:[e instanceof Error?e.message:'EXTRACAO_A_REVISAR']};}
+ desc.pallet=classifyPalletDocument(desc,p.filename,headers.subject||'',pdfText);
  const decision=supplierDecision(desc,headers.from,rules);
  let candidates=[];if(desc.kind==='BOLETO'&&desc.invoice_number)candidates=ok(await db.from('gmail_hub_dossiers').select('metadata').eq('empresa_id',c.empresa_id).eq('metadata->>number',desc.invoice_number)).map((r:any)=>r.metadata);
  const match=matchDossier(desc,candidates,decision.supplier);
