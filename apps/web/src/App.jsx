@@ -1,3 +1,5 @@
+import WhatsappInbox,{inboxCall} from './WhatsappInbox.jsx';
+import {counterDraftKey,readCounterDraft,counterCancellationBlock} from './counter-draft.js';
 import {useForteNavigation,useForteLayer} from './use-forte-navigation.js';
 import EditSale from './EditSale.jsx';
 import WorkspaceMenu from './WorkspaceMenu.jsx';
@@ -11,7 +13,7 @@ import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {createItauTestPDF} from './itau-test-pdf.js';
 import ItauStandalone from './ItauStandalone.jsx';
 import {registryConflict} from "./registry-identity.js";
-import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj} from './customer-address.js';
+import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj,mergeMissingCustomerDetails} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
@@ -827,6 +829,19 @@ export default function App() {
   const [workflowInitialTab,setWorkflowInitialTab]=useState("fornecedor");
   useEffect(() => {let active=true;if(!supabaseConfigured)return;loadCloudState().then(remote=>{if(!active)return;cloudReady.current=true;if(remote){const funcionarios=[...(remote.funcionarios||[])];for(const oficial of seed.funcionarios||[])if(!funcionarios.some(x=>x.id===oficial.id||String(x.cpf||"").replace(/\D/g,"")===oficial.cpf))funcionarios.push(oficial);setData(applyAuthUser({...remote,settings:{...seed.settings,...(remote.settings||{})},funcionarios,unidadesFiscaisHistoricas:remote.unidadesFiscaisHistoricas||seed.unidadesFiscaisHistoricas}))}else saveCloudState(data).catch(e=>console.error("FALHA AO ENVIAR BASE INICIAL AO SUPABASE",e))}).catch(e=>console.error("FALHA AO CARREGAR BASE SUPABASE",e));return()=>{active=false}},[]);
   useEffect(() => {saveData(data);if(!supabaseConfigured||!cloudReady.current||workflowBusy.current)return;clearTimeout(cloudTimer.current);cloudTimer.current=setTimeout(()=>saveCloudState(data).catch(e=>console.error("FALHA AO SALVAR BASE SUPABASE",e)),800);return()=>clearTimeout(cloudTimer.current)}, [data]);
+  async function commitCounterSale(buildNext) {
+    if (!supabaseConfigured || !cloudReady.current) throw new Error("A BASE NA NUVEM AINDA NÃO FOI CARREGADA. CONFIRA A CONEXÃO.");
+    if (workflowBusy.current) throw new Error("OPERAÇÃO EM GRAVAÇÃO. AGUARDE SUA CONFIRMAÇÃO.");
+    workflowBusy.current = true;
+    clearTimeout(cloudTimer.current);
+    try {
+      const next = buildNext(data);
+      const receipt = await saveCloudState(next);
+      if (!receipt) throw new Error("O SERVIDOR NÃO CONFIRMOU A GRAVAÇÃO.");
+      setData(applyAuthUser(receipt));
+      return receipt;
+    } finally { workflowBusy.current = false; }
+  }
   async function commitOrderWorkflow(body) {
     if (!supabaseConfigured) throw new Error("Esta operação exige conexão com o servidor.");
     if (workflowBusy.current) throw new Error("Aguarde a operação atual.");
@@ -873,6 +888,7 @@ export default function App() {
     relatorios: "RELATÓRIOS", patio: "PÁTIO / ESTOQUE", integracoes: "INTEGRAÇÕES",
   };
   const groupForTab = (screen) => {
+    if(screen==="whatsapp")return "vendas";
     if (["estoque", "paletes"].includes(screen)) return "patio";
     if (["gmail", "integracoes", "integracoesFinanceiras"].includes(screen)) return "integracoes";
     if (screen === "itau") return "cobrancas";
@@ -897,7 +913,9 @@ export default function App() {
   const tab=requestedTab===navigationRoot||(requestedTab.startsWith("group:")?canAccessGroup(requestedTab.slice(6)):canAccessTab(requestedTab))?requestedTab:navigationRoot;
   useEffect(()=>tabHistory.setGuard(screen=>screen===navigationRoot||(screen.startsWith("group:")?canAccessGroup(screen.slice(6)):canAccessTab(screen))));
   const salesArea=salesAreaFor(tab);
-  const navigation = workspaceNavigation(canAccessGroup,canAccessTab);
+  const [whatsappUnread,setWhatsappUnread]=useState(0);
+  const navigation = workspaceNavigation(canAccessGroup,canAccessTab,whatsappUnread);
+  useEffect(()=>{if(!supabase||!canAccessTab("whatsapp"))return;let active=true;const refresh=()=>inboxCall(supabase,"INBOX_LIST").then(r=>{if(active)setWhatsappUnread(r.unread||0);}).catch(()=>{});refresh();const timer=setInterval(refresh,60000);return()=>{active=false;clearInterval(timer);};},[currentUser?.id]);
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
     if (tab !== "home" && requestedGroup && !canAccessGroup(requestedGroup))
@@ -3091,8 +3109,9 @@ export default function App() {
             currentUser={currentUser}
           />
         )}
+        {tab === "whatsapp" && <WhatsappInbox client={supabase} onUnread={setWhatsappUnread}/>}
         {tab === "balcao" && (
-          <Balcao data={data} onChange={setData} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
+          <Balcao data={data} onChange={setData} onCommit={commitCounterSale} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
         )}
         {tab === "externas" && (
           <VendasExternas
@@ -3117,10 +3136,10 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
-        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
+        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={cargaId=>{setActiveLoadId(cargaId);setTab("painelCargas");}} />} /> }
         {tab === "comprasFornecedor" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
+        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={cargaId=>{setActiveLoadId(cargaId);setTab("painelCargas");}} />} /> }
         {tab === "ordensCarregamento" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
@@ -3494,7 +3513,7 @@ function pdfTabela(title, headers, rows, file, summary = []) {
   }
   doc.save(file);
 }
-function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
+export function Balcao({ data, onChange, onCommit, currentUser, onOpenBoleto }) {
   const unidades = data.unidades || [],
     clientes = data.clientes || [],
     produtos = (data.produtos || []).filter(isResaleProduct),
@@ -3510,10 +3529,11 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const [clienteId, setClienteId] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [qtd, setQtd] = useState("");
-  const BALCAO_DRAFT_KEY = "forte-vendas-balcao-itens-rascunho-v628";
+  const BALCAO_DRAFT_KEY = counterDraftKey(currentUser,unidade);
+  const [loadedDraftKey,setLoadedDraftKey]=useState(BALCAO_DRAFT_KEY);
   const [itens, setItens] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(BALCAO_DRAFT_KEY) || "[]");
+      return readCounterDraft(localStorage,BALCAO_DRAFT_KEY);
     } catch {
       return [];
     }
@@ -3540,6 +3560,35 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const [clienteRelatorioId, setClienteRelatorioId] = useState("");
   const [opsClienteSelecionadas, setOpsClienteSelecionadas] = useState([]);
   const [editVendaId, setEditVendaId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  async function gravarNoServidor(buildNext,prepare) {
+    if (savingRef.current) throw new Error("GRAVAÇÃO EM ANDAMENTO.");
+    if (typeof onCommit !== "function") throw new Error("A CONEXÃO DE GRAVAÇÃO DO BALCÃO NÃO ESTÁ DISPONÍVEL.");
+    savingRef.current = true;
+    setSaving(true);
+    try { const prepared=prepare?await prepare():undefined;return await onCommit(d=>buildNext(d,prepared)); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+  function novaOperacao(tipo = "VENDA") {
+    if (savingRef.current) return;
+    if ((itens.length || editVendaId) && !window.confirm("DESCARTAR OS ITENS NÃO GRAVADOS DESTA TELA? ISSO NÃO APAGA VENDAS JÁ REGISTRADAS.")) return;
+    setTipoAtendimento(tipo);
+    setEditVendaId("");
+    setClienteId("");
+    setProdutoId("");
+    setQtd("");
+    setItens([]);
+    setItensConfirmados(false);
+    setPagamentosMistos([]);
+    setEntrega("SEM ENTREGA");
+    setBuscaOrcamento("");
+    setSituacaoPallets("");
+    setPalletsForte("");
+    setPalletsCliente("");
+    setJustificativaPallets("");
+    try { if(BALCAO_DRAFT_KEY)localStorage.removeItem(BALCAO_DRAFT_KEY); } catch {}
+  }
   const vendas = data.vendasBalcao || [];
   const caixas = data.caixasBalcao || [];
   const c = clientes.find((x) => x.id === clienteId),
@@ -3626,11 +3675,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       );
     return true;
   }
-  useEffect(() => {
-    try {
-      localStorage.setItem(BALCAO_DRAFT_KEY, JSON.stringify(itens));
-    } catch {}
-  }, [itens]);
+  useEffect(()=>{if(loadedDraftKey===BALCAO_DRAFT_KEY)return;setItens(readCounterDraft(localStorage,BALCAO_DRAFT_KEY));setLoadedDraftKey(BALCAO_DRAFT_KEY);setClienteId('');setProdutoId('');setEditVendaId('');setItensConfirmados(false);setPagamentosMistos([]);setMotoristaId('');setDestinoEntrega('');setEntrega('SEM ENTREGA');setSituacaoPallets('');setPalletsForte('');setPalletsCliente('');},[BALCAO_DRAFT_KEY,loadedDraftKey]);
+  useEffect(()=>{if(!BALCAO_DRAFT_KEY||loadedDraftKey!==BALCAO_DRAFT_KEY)return;try{localStorage.setItem(BALCAO_DRAFT_KEY,JSON.stringify(itens));}catch{}},[itens,BALCAO_DRAFT_KEY,loadedDraftKey]);
   function addItem() {
     if (!p || !qtd || Number(qtd) <= 0)
       return alert("SELECIONE PRODUTO E QUANTIDADE.");
@@ -3671,30 +3717,29 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         ? frete
         : 0,
     total = subtotal + freteCobradoPelaForte;
-  function abrirCaixa() {
-    if (caixaAberto)
-      return alert("JÁ EXISTE UM CAIXA ABERTO PARA ESTA UNIDADE HOJE.");
+  async function abrirCaixa() {
+    if (savingRef.current) return;
+    if (caixaAberto) return alert("JÁ EXISTE UM CAIXA ABERTO PARA ESTA UNIDADE HOJE.");
     const abertura = parseMoneyInput(saldoInicial || "0");
     if (!Number.isFinite(abertura) || abertura < 0) return alert("SALDO INICIAL INVÁLIDO.");
-    onChange((d) => ({
-      ...d,
-      caixasBalcao: [
-        ...(d.caixasBalcao || []),
-        {
-          id: uid("cx"),
-          data: todayISO(),
-          unidade,
+    if (!unidade) return alert("SELECIONE A UNIDADE DO CAIXA.");
+    try {
+      await gravarNoServidor((d) => ({ ...d,
+        caixasBalcao: [...(d.caixasBalcao || []), {
+          id: uid("cx"), data: todayISO(), unidade,
           operador: currentUser?.nome || "",
-          abertoEm: new Date().toISOString(),
-          saldoInicial: abertura,
+          abertoEm: new Date().toISOString(), saldoInicial: abertura,
           status: "ABERTO",
-        },
-      ],
-    }));
-    setSaldoInicial("");
-    alert("CAIXA ABERTO.");
+        }],
+      }));
+      setSaldoInicial("");
+      alert("CAIXA ABERTO E CONFIRMADO NA NUVEM.");
+    } catch (error) {
+      alert("CAIXA NÃO FOI ABERTO NO SERVIDOR. NENHUMA ABERTURA FOI CONFIRMADA.\n\n" + (error?.message || error));
+    }
   }
-  function conferirCaixa() {
+  async function conferirCaixa() {
+    if(savingRef.current)return;
     if (!caixaAberto) return alert("NÃO HÁ CAIXA ABERTO PARA CONFERIR.");
     const vv = (data.vendasBalcao || []).filter(
       (v) =>
@@ -3731,7 +3776,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         }))
         .filter((cr) => cr.saldo > 0),
     };
-    onChange((d) => ({
+    try { await gravarNoServidor((d) => ({
       ...d,
       caixasBalcao: (d.caixasBalcao || []).map((x) =>
         x.id === caixaAberto.id
@@ -3752,7 +3797,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             }
           : x,
       ),
-    }));
+    })); } catch(error) { alert('OPERAÇÃO NÃO CONFIRMADA. DADOS PRESERVADOS.\n'+(error.message||error)); return; }
     pdfCaixaAnalitico(snapshot);
     alert(
       "PRÉ-CONFERÊNCIA GERADA. O CAIXA CONTINUA ABERTO E AS CORREÇÕES PERMITIDAS PODEM SER FEITAS ANTES DO FECHAMENTO DEFINITIVO.",
@@ -4109,12 +4154,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       ],
     );
   }
-  function cancelarOrcamento(o) {
+  async function cancelarOrcamento(o) {
+    if(savingRef.current)return;
     if (!["ORÇAMENTO", "PARCIALMENTE ATENDIDO"].includes(o.status)) return;
     const motivo = upper(prompt("INFORME O MOTIVO DO CANCELAMENTO:") || "");
     if (!motivo) return;
     if (!confirm(`CANCELAR ${o.numeroOrcamento || o.id} E LIBERAR TODO O ESTOQUE AINDA RESERVADO?`)) return;
-    onChange((d) => ({
+    try { await gravarNoServidor((d) => ({
       ...d,
       vendasBalcao: (d.vendasBalcao || []).map((v) =>
         v.id === o.id
@@ -4139,9 +4185,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           dataHora: nowISO(),
         },
       ],
-    }));
+    })); } catch(error) { alert('OPERAÇÃO NÃO CONFIRMADA. DADOS PRESERVADOS.\n'+(error.message||error)); return; }
   }
-  function gerarVendaParcialPorValor(o) {
+  async function gerarVendaParcialPorValor(o) {
+    if(savingRef.current)return;
     if (!o || !["ORÇAMENTO", "PARCIALMENTE ATENDIDO"].includes(o.status))
       return alert("ORÇAMENTO SEM SALDO PENDENTE.");
     if (!caixaAberto)
@@ -4251,7 +4298,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       origemVendaParcial: "VALOR RECEBIDO",
     };
     const totalRestanteApos = saldoBase.reduce((sum, item) => sum + Number(item.qtd || 0), 0) - itensVenda.reduce((sum, item) => sum + Number(item.qtd || 0), 0);
-    onChange((d) => {
+    try { await gravarNoServidor((d) => {
       const saldoNovo = saldoBase
         .map((base, saldoIdx) => {
           const vend = itensVenda.find((x) => x._saldoIdx === saldoIdx);
@@ -4373,7 +4420,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         creditosClientes: creditos,
         patioSaidas: d.patioSaidas || [], // histórico legado preservado; fluxo de liberação removido na V6.8.0
       };
-    });
+    }); } catch(error) { alert('OPERAÇÃO NÃO CONFIRMADA. DADOS PRESERVADOS.\n'+(error.message||error)); return; }
     setItens([]);
     try {
       localStorage.removeItem(BALCAO_DRAFT_KEY);
@@ -4386,7 +4433,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       `VENDA ${numeroVenda} GERADA.\n\n${itensResumo}\n\nNOVO VALOR RECEBIDO: ${money(valorRecebido)}\nCRÉDITO UTILIZADO: ${money(creditoUsado)}\nVALOR TOTAL DISPONÍVEL: ${money(valorAplicavel)}\nVALOR CONVERTIDO EM MERCADORIA/FRETE: ${money(vendaTotal)}\n${creditoGerado > 0 ? `NOVO CRÉDITO DO CLIENTE: ${money(creditoGerado)}\n` : ""}CRÉDITO DISPONÍVEL APÓS A OPERAÇÃO: ${money(usarCredito ? creditoGerado : creditoAntes + creditoGerado)}\nSALDO DO ORÇAMENTO: ${totalRestanteApos} SC.`,
     );
   }
-  function anexarComprovanteOperacao(op, arquivo, movimentoId = "") {
+  async function anexarComprovanteOperacao(op, arquivo, movimentoId = "") {
+    if(savingRef.current)return;
     if (!arquivo) return;
     const assinatura = [
       arquivo.name,
@@ -4424,19 +4472,19 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       confirmacaoTerceiro: false,
       observacaoTerceiro: "",
     };
-    onChange((d) => ({
+    try { await gravarNoServidor((d,storedDocument) => ({
       ...d,
-      comprovantesBalcao: [...(d.comprovantesBalcao || []), registro],
+      comprovantesBalcao: (d.comprovantesBalcao||[]).some(x=>x.operacaoId===op.id&&x.storagePath===storedDocument.storagePath)?d.comprovantesBalcao:[...(d.comprovantesBalcao||[]),{...registro,...storedDocument}],
       vendasBalcao: (d.vendasBalcao || []).map((v) =>
         v.id === op.id
           ? {
               ...v,
-              comprovanteIds: [...(v.comprovanteIds || []), registro.id],
+              comprovanteIds: [...new Set([...(v.comprovanteIds||[]),(d.comprovantesBalcao||[]).find(x=>x.operacaoId===op.id&&x.storagePath===storedDocument.storagePath)?.id||registro.id])],
               atualizadoEm: nowISO(),
             }
           : v,
       ),
-    }));
+    }),()=>storeReceivableFile({client:supabase,empresaId:getAuthContext()?.profile?.empresa_id,file:arquivo,kind:'comprovante',saleId:op.id})); } catch(error) { alert('COMPROVANTE NÃO CONFIRMADO. '+(error.message||error)); return; }
     alert(
       duplicado
         ? `ATENÇÃO: ${arquivo.name} FOI ANEXADO, MAS O SISTEMA IDENTIFICOU UM ARQUIVO JÁ UTILIZADO EM OUTRA OPERAÇÃO. STATUS: DUPLICADO — CONFERIR.`
@@ -4461,15 +4509,18 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         (x.numeroOrcamento && x.numeroOrcamento === op.numeroOrcamento),
     );
   }
-  function listarComprovantesOperacao(op) {
-    const lista = comprovantesDaOperacao(op);
-    if (!lista.length)
-      return alert("NENHUM COMPROVANTE ANEXADO NESTA OPERAÇÃO.");
-    alert(
-      `COMPROVANTES (${lista.length})\n\n${lista.map((x, i) => `${i + 1}. ${x.arquivo} — ${x.statusVerificacao || "AGUARDANDO LEITURA / CONCILIAÇÃO"} — ${x.pagadorNome ? `PAGADOR: ${x.pagadorNome}` : "PAGADOR A IDENTIFICAR"}${x.pagamentoTerceiro ? ` — PAGAMENTO POR TERCEIRO${x.confirmacaoTerceiro ? " CONFIRMADO" : " — CONFERIR VÍNCULO"}` : ""} — ${new Date(x.criadoEm).toLocaleString("pt-BR")} — ${x.usuario || "-"}`).join("\n")}`,
-    );
+  async function listarComprovantesOperacao(op) {
+    const lista=comprovantesDaOperacao(op);
+    if(!lista.length)return alert('NENHUM COMPROVANTE ANEXADO NESTA OPERAÇÃO.');
+    const chosen=lista.length===1?1:Number(prompt('QUAL COMPROVANTE DESEJA ABRIR?\n'+lista.map((x,i)=>`${i+1}. ${x.arquivo} — ${x.statusVerificacao||'PENDENTE'}`).join('\n')));
+    const doc=lista[chosen-1];if(!doc)return;
+    if(!doc.storageBucket||!doc.storagePath)return alert('ESTE REGISTRO LEGADO NÃO TEM CÓPIA DO ARQUIVO NA NUVEM. ANEXE O COMPROVANTE NOVAMENTE.');
+    const popup=window.open('','_blank');if(popup)popup.opener=null;
+    try{const {data:link,error}=await supabase.storage.from(doc.storageBucket).createSignedUrl(doc.storagePath,60);if(error||!link?.signedUrl)throw Error('Não foi possível abrir o comprovante. Confira a permissão e a conexão.');if(popup)popup.location=link.signedUrl;else alert('PERMITA A ABERTURA DE NOVAS JANELAS PARA VISUALIZAR O COMPROVANTE.');}
+    catch(error){popup?.close();alert(error.message);}
   }
-  function converterOrcamento() {
+  async function converterOrcamento() {
+    if(savingRef.current)return;
     const q = upper(buscaOrcamento).trim();
     const o = vendas.find(
       (v) =>
@@ -4551,7 +4602,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       justificativaPallets: upper(justificativaPallets),
       status: "CONCLUÍDA",
     };
-    onChange((d) => {
+    try { await gravarNoServidor((d) => {
       const saldoNovo = saldoBase
         .map((base) => {
           const vend = itensVenda.find((x) => x.produtoId === base.produtoId);
@@ -4697,7 +4748,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             : []),
         ],
       };
-    });
+    }); } catch(error) { alert('OPERAÇÃO NÃO CONFIRMADA. DADOS PRESERVADOS.\n'+(error.message||error)); return; }
     setItens([]);
     try {
       localStorage.removeItem(BALCAO_DRAFT_KEY);
@@ -4709,7 +4760,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         : `VENDA ${numeroVenda} GERADA. O ORÇAMENTO ${o.numeroOrcamento || o.id} FOI ATENDIDO INTEGRALMENTE.`,
     );
   }
-  function salvar(status = "CONCLUÍDA") {
+  async function salvar(status = "CONCLUÍDA") {
+    if (savingRef.current) return;
     if (!c || !effectiveItems.length)
       return alert(
         "SELECIONE O CLIENTE E INFORME AO MENOS UM PRODUTO COM QUANTIDADE.",
@@ -4853,7 +4905,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         status === "ORÇAMENTO" ? nowISO() : original?.reservaCriadaEm,
       status,
     };
-    onChange((d) => {
+    try {
+    await gravarNoServidor((d) => {
       const freteLanc =
         status === "CONCLUÍDA" && entrega === "COM ENTREGA"
           ? {
@@ -4970,6 +5023,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         ],
       };
     });
+    } catch (error) {
+      alert("VENDA / ORÇAMENTO NÃO FOI GRAVADO. OS ITENS CONTINUAM NA TELA PARA TENTAR NOVAMENTE.\n\n" + (error?.message || error));
+      return;
+    }
     setItens([]);
     setItensConfirmados(false);
     setEditVendaId("");
@@ -5201,7 +5258,9 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       `VENDA ${v.numeroVenda || v.id} ABERTA PARA EDIÇÃO. O NÚMERO DA VENDA SERÁ PRESERVADO.`,
     );
   }
-  function cancelarVendaBalcao(v) {
+  async function cancelarVendaBalcao(v) {
+    if(savingRef.current)return;
+    const reason=counterCancellationBlock(data,v);if(reason)return alert(reason);
     if (!vendaPodeSerAlterada(v))
       return alert(
         "VENDA BLOQUEADA: O CAIXA DESTA VENDA JÁ FOI FECHADO OU NÃO É O CAIXA ABERTO DE HOJE.",
@@ -5220,8 +5279,9 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       )
     )
       return;
-    onChange((d) => {
-      let vb = (d.vendasBalcao || []).filter((x) => x.id !== v.id);
+    try { await gravarNoServidor((d) => {
+      const reason=counterCancellationBlock(d,v);if(reason)throw Error(reason);
+      let vb = (d.vendasBalcao || []).map(x=>x.id===v.id?{...x,status:'CANCELADA',canceladaEm:nowISO(),canceladaPor:currentUser?.authUserId||currentUser?.id,motivoCancelamento:motivo}:x);
       if (v.orcamentoOrigemId) {
         vb = vb.map((o) => {
           if (o.id !== v.orcamentoOrigemId) return o;
@@ -5268,9 +5328,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             status: totalVendido > 0 ? "PARCIALMENTE ATENDIDO" : "ORÇAMENTO",
             reservaEstoqueStatus: "ATIVA — VENDA ESTORNADA / SALDO DEVOLVIDO",
             reservaAtualizadaEm: nowISO(),
-            atendimentos: (o.atendimentos || []).filter(
-              (a) => a.numeroVenda !== v.numeroVenda,
-            ),
+            atendimentos: (o.atendimentos || []).map(a=>a.numeroVenda===v.numeroVenda?{...a,status:'CANCELADO',canceladoEm:nowISO()}:a),
             atualizadoEm: nowISO(),
           };
         });
@@ -5279,20 +5337,12 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       return {
         ...d,
         vendasBalcao: vb,
-        patioSaidas: (d.patioSaidas || []).filter((x) => x.vendaId !== v.id),
-        fretesBalcao: (d.fretesBalcao || []).filter((x) => x.vendaId !== v.id),
-        contasPagar: (d.contasPagar || []).filter(
-          (x) => !(x.referencia === v.id && x.tipo === "FRETE VENDA BALCÃO"),
-        ),
-        contasReceber: (d.contasReceber || []).filter(
-          (x) => x.vendaId !== v.id && x.referencia !== v.id,
-        ),
-        boletosClientes: (d.boletosClientes || []).filter(
-          (x) => x.vendaId !== v.id,
-        ),
-        comprovantesClientes: (d.comprovantesClientes || []).filter(
-          (x) => x.vendaId !== v.id,
-        ),
+        patioSaidas: d.patioSaidas || [],
+        fretesBalcao: d.fretesBalcao || [],
+        contasPagar: d.contasPagar || [],
+        contasReceber: d.contasReceber || [],
+        boletosClientes: d.boletosClientes || [],
+        comprovantesClientes: d.comprovantesClientes || [],
         creditosClientes: creditos,
         auditoria: [
           ...(d.auditoria || []),
@@ -5307,13 +5357,13 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           },
         ],
       };
-    });
+    }); } catch(error) { alert('OPERAÇÃO NÃO CONFIRMADA. DADOS PRESERVADOS.\n'+(error.message||error)); return; }
     if (editVendaId === v.id) {
       setEditVendaId("");
       setItens([]);
     }
     alert(
-      "VENDA CANCELADA / ESTORNADA. EFEITOS DO CAIXA DO DIA FORAM DESFEITOS. O REGISTRO MÍNIMO FOI PRESERVADO NA AUDITORIA.",
+      "VENDA CANCELADA / ESTORNADA. EFEITOS DO CAIXA DO DIA FORAM DESFEITOS. O REGISTRO COMPLETO FOI PRESERVADO COM STATUS CANCELADA.",
     );
   }
   const clienteRelatorio = clientes.find((x) => x.id === clienteRelatorioId);
@@ -5511,6 +5561,14 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           </button>
         </div>
       </div>
+      <div className="balcaoFastActions" role="group" aria-label="Atalhos da Venda Balcão">
+        <button type="button" onClick={() => novaOperacao("VENDA")} disabled={saving}>+ NOVA VENDA</button>
+        <button type="button" className="secondary" onClick={() => novaOperacao("ORCAMENTO")} disabled={saving}>+ NOVO ORÇAMENTO</button>
+        <button type="button" className="secondary" onClick={() => document.getElementById("balcao-produto-select")?.focus()}>PRODUTOS</button>
+        <button type="button" className="secondary" onClick={() => document.getElementById("balcao-orcamentos")?.scrollIntoView({behavior:"smooth",block:"start"})}>ORÇAMENTOS</button>
+        <button type="button" className="dangerBtn" onClick={() => novaOperacao(tipoAtendimento)} disabled={saving || (!itens.length && !editVendaId)}>EXCLUIR RASCUNHO</button>
+      </div>
+      {saving && <p role="status" className="alert warning">CONFIRMANDO GRAVAÇÃO NO SERVIDOR. NÃO REPITA A OPERAÇÃO.</p>}
       <div className="transportBox">
         <Field label="1. TIPO DE ATENDIMENTO">
           <select value={tipoAtendimento} onChange={e=>setTipoAtendimento(e.target.value)} disabled={!!editVendaId}>
@@ -5541,7 +5599,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                   onChange={(e) => setSaldoInicial(e.target.value)}
                 />
               </Field>
-              <button onClick={abrirCaixa}>ABRIR CAIXA</button>
+              <button onClick={abrirCaixa} disabled={saving}>ABRIR CAIXA</button>
             </>
           ) : (
             <>
@@ -5725,6 +5783,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       <div className="miniGrid">
         <Field label="PRODUTO">
           <select
+            id="balcao-produto-select"
             value={produtoId}
             onChange={(e) => setProdutoId(e.target.value)}
           >
@@ -5752,6 +5811,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             placeholder="DIGITE E PRESSIONE ENTER"
           />
         </Field>
+        <button type="button" onClick={addItem} disabled={saving}>+ ADICIONAR ITEM</button>
         <Field label="PREÇO TABELA">
           <input disabled value={money(tabela)} />
         </Field>
@@ -5848,17 +5908,17 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           disabled={!itens.length}
           onClick={() => {
             try {
-              localStorage.setItem(BALCAO_DRAFT_KEY, JSON.stringify(itens));
+              if(BALCAO_DRAFT_KEY)localStorage.setItem(BALCAO_DRAFT_KEY, JSON.stringify(itens));
               setItensConfirmados(true);
               alert(
-                `${itens.length} ITEM(NS) SALVO(S). AGORA ESCOLHA GERAR ORÇAMENTO OU CONCLUIR A VENDA.`,
+                `${itens.length} ITEM(NS) CONFIRMADO(S) NESTE COMPUTADOR. PARA GRAVAR NO SERVIDOR, CLIQUE EM GERAR ORÇAMENTO OU GERAR / CONCLUIR VENDA.`,
               );
             } catch {
               alert("NÃO FOI POSSÍVEL SALVAR OS ITENS.");
             }
           }}
         >
-          SALVAR
+          CONFIRMAR ITENS
         </button>
         <span className="note">
           <b>{itens.length} ITEM(NS) NA LISTA</b>
@@ -6011,7 +6071,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           </div>
         </>
       )}
-      <div className="transportBox budgetSearchBox">
+      <div className="transportBox budgetSearchBox" id="balcao-orcamentos">
         <div className="sectionHead">
           <div>
             <h3>ORÇAMENTOS — CONSULTA E SALDOS PENDENTES</h3>
@@ -11025,10 +11085,9 @@ function CadModal({
         situacaoCadastral: upper(j.descricao_situacao_cadastral || j.situacao_cadastral || ''),
         telefone: j.ddd_telefone_1 || '', email: j.email || '',
       }).filter(([,value]) => value !== ''));
-      setF(x => String(x.documento || '').replace(/\D/g, '') !== n ? x : ({
-        ...x, ...optional, ...companyAddressPatch(j,n),
-      }));
-      setCnpjStatus('DADOS PREENCHIDOS PELA BRASILAPI. CONFIRA ANTES DE SALVAR.' +
+      setF(x => String(x.documento || '').replace(/\D/g, '') !== n ? x :
+        mergeMissingCustomerDetails(x,{...optional,...companyAddressPatch(j,n)}));
+      setCnpjStatus('DADOS VAZIOS COMPLETADOS PELA BRASILAPI; DADOS JÁ PREENCHIDOS PRESERVADOS. CONFIRA ANTES DE SALVAR.' +
         (ie ? '' : ' INSCRIÇÃO ESTADUAL NÃO INFORMADA PELA FONTE.'));
     } catch (e) {
       if (request === cnpjRequest.current) setCnpjStatus(e.message || 'FALHA NA BUSCA DO CNPJ. TENTE NOVAMENTE OU PREENCHA OS DADOS.');

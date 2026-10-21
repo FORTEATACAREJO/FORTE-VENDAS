@@ -1,0 +1,32 @@
+import {listInbox,replyWindow,applyInboxStatuses} from './inbox.mjs';
+export async function inboxAction({body,db,profile,user,env,rowFor,persist,readBusiness,fetcher=fetch}){
+ const empresa=profile.empresa_id,row=await rowFor(db,empresa),state=row.estado;
+ if(body.action==='INBOX_LIST')return listInbox(state,{query:body.query,filter:body.filter,offset:Math.max(0,Math.min(100000,Number(body.offset)||0))});
+ if(body.action==='INBOX_OPTIONS'){const collections={venda:'vendas',compra:'comprasFornecedor',carga:'cargas',cliente:'clientes',motorista:'motoristas',fornecedor:'fornecedores',orcamento:'vendasBalcao'};const collection=collections[body.type];if(!collection)throw Error('Tipo de vínculo inválido.');return {options:(state[collection]||[]).filter(x=>x.ativo!==false).slice(-1000).reverse().map(x=>({id:x.id,label:[x.numeroVenda||x.numeroOrcamento||x.codigo||x.numeroPedidoFornecedor||x.numero||x.nome||x.razaoSocial||x.id,x.cliente||x.fornecedor||x.motorista||''].filter(Boolean).join(' · ')}))};}
+ const thread=(state.whatsappInboxThreads||[]).find(t=>t.id===body.threadId);if(!thread)throw Error('Conversa não encontrada nesta empresa.');
+ if(body.action==='INBOX_MESSAGES')return {messages:(state.whatsappInboxMessages||[]).filter(m=>m.threadId===thread.id).sort((a,b)=>String(a.at).localeCompare(String(b.at))).slice(-200),canReply:replyWindow(state,thread.id),thread};
+ if(body.action==='INBOX_UPDATE'){
+  if(body.state!==undefined){if(!['PENDENTE','RESOLVIDA'].includes(body.state))throw Error('Situação inválida.');thread.state=body.state;}
+  if(body.markRead===true)thread.readAt=new Date().toISOString();
+  if(body.claim===true)thread.assignedTo=user.id;
+  if(body.note){const text=String(body.note).trim().slice(0,4000);state.whatsappInboxMessages=[...(state.whatsappInboxMessages||[]),{id:crypto.randomUUID(),threadId:thread.id,direction:'NOTE',type:'text',text,at:new Date().toISOString(),actor:user.id,state:'INTERNAL'}];}
+  if(body.link){const collections={venda:'vendas',compra:'comprasFornecedor',carga:'cargas',cliente:'clientes',motorista:'motoristas',fornecedor:'fornecedores',orcamento:'vendasBalcao'};const collection=collections[body.link.type];if(!collection||!(state[collection]||[]).some(x=>x.id===body.link.id))throw Error('Vínculo não encontrado nesta empresa.');const link={type:body.link.type,id:body.link.id};thread.links=[...(thread.links||[]).filter(l=>l.type!==link.type||l.id!==link.id),link];}
+  state.whatsappInboxAudit=[...(state.whatsappInboxAudit||[]),{id:crypto.randomUUID(),acao:'ATENDIMENTO WHATSAPP ATUALIZADO',entityId:thread.id,usuario:user.id,dataHora:new Date().toISOString()}];await persist(db,empresa,row);return {ok:true};
+ }
+ if(body.action==='INBOX_MEDIA'){
+  const message=(state.whatsappInboxMessages||[]).find(m=>m.threadId===thread.id&&m.id===body.messageId);if(!message?.mediaId)throw Error('Anexo não disponível.');const config=await readBusiness(db,env);
+  const info=await fetcher(`https://graph.facebook.com/${config.version}/${encodeURIComponent(message.mediaId)}`,{headers:{Authorization:'Bearer '+config.token},signal:AbortSignal.timeout(15000)});if(!info.ok)throw Error('A Meta não disponibilizou este anexo.');const metadata=await info.json();const url=new URL(metadata.url);
+  if(url.protocol!=='https:'||!/(^|\.)(fbsbx\.com|fbcdn\.net)$/.test(url.hostname)||Number(metadata.file_size)>8*1024*1024)throw Error('Anexo fora do limite de download de 8 MB ou origem inválida.');
+  const response=await fetcher(url,{headers:{Authorization:'Bearer '+config.token},redirect:'error',signal:AbortSignal.timeout(20000)});if(!response.ok||Number(response.headers.get('content-length'))>8*1024*1024)throw Error('Anexo temporariamente indisponível.');const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length>8*1024*1024)throw Error('Anexo maior que 8 MB.');let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return {base64:btoa(binary),mime:message.mime||'application/octet-stream',filename:message.filename||'anexo-'+message.id.replace(/[^A-Za-z0-9_-]/g,'').slice(-30)};
+ }
+ if(body.action!=='INBOX_REPLY')throw Error('Ação inválida.');
+ const text=String(body.text||'').trim();if(!text||text.length>4096||!/^[0-9a-f-]{36}$/i.test(body.commandId||''))throw Error('Informe uma resposta e um identificador de envio válido.');
+ const id='reply:'+body.commandId,existing=(state.whatsappInboxMessages||[]).find(m=>m.id===id);if(existing){if(existing.threadId!==thread.id||existing.text!==text)throw Error('Identificador já utilizado para outra resposta.');return {message:existing};}
+ if((state.whatsappInboxMessages||[]).some(m=>m.threadId===thread.id&&m.direction==='OUT'&&['SENDING','UNCERTAIN'].includes(m.state)))throw Error('Há um envio em processamento ou incerto nesta conversa. Confira o resultado antes de outra resposta.');
+ if(!replyWindow(state,thread.id))throw Error('Janela de 24 horas encerrada. Use um modelo aprovado no fluxo de envio de documentos.');
+ const config=await readBusiness(db,env);if(!config.token||!config.phone)throw Error('Business não configurado.');
+ const message={id,threadId:thread.id,direction:'OUT',type:'text',text,at:new Date().toISOString(),actor:user.id,state:'SENDING'};
+ state.whatsappInboxMessages=[...(state.whatsappInboxMessages||[]),message];await persist(db,empresa,row);
+ let providerId=null,failed=false;try{const result=await fetcher(`https://graph.facebook.com/${config.version}/${config.phone}/messages`,{method:'POST',headers:{Authorization:'Bearer '+config.token,'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',to:thread.phone,type:'text',text:{body:text}}),signal:AbortSignal.timeout(20000)});if(!result.ok)failed=true;else providerId=(await result.json()).messages?.[0]?.id||null;}catch{}
+ for(let attempt=0;attempt<3;attempt++){const latest=await rowFor(db,empresa),saved=latest.estado.whatsappInboxMessages.find(m=>m.id===id);if(!saved)throw Error('Envio ainda não reconciliado. Não repita a resposta.');saved.providerId=providerId;saved.state=providerId?'SENT':failed?'FAILED':'UNCERTAIN';applyInboxStatuses(latest.estado.whatsappInboxMessages,latest.estado.whatsappInboxEvents||[]);try{await persist(db,empresa,latest);return {message:saved};}catch(e){if(attempt===2)throw Error('Resultado do envio ainda não reconciliado. Atualize antes de responder novamente.');}}
+}
