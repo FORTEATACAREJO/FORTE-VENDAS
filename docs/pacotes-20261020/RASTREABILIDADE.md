@@ -48,7 +48,7 @@ Rollback de interface: voltar ao commit anterior correspondente a cada PR. Rollb
 ## Limites da revisão e critérios ainda abertos
 
 - A destinação atual de NF de mercadoria continua integral: agrupa vendas cuja soma corresponde à NF ou incorpora toda a NF ao estoque. O relacionamento N:N parcial por item entre venda, NF e compra, em ambos os sentidos, ainda exige implementação e homologação; não está coberto pelo simples agrupamento de vendas e não deve ser declarado concluído.
-- A concorrência entre sessões independentes do PostgreSQL para os novos lançamentos de pallets e vínculos ainda precisa ser homologada. PGlite comprova regras, transação e repetição, mas não substitui esse ensaio.
+- A concorrência de integração e devolução de pallets passou em sessões independentes do PostgreSQL 17 no CI (job pallet-concurrency, 21/10/2026): somente uma integração, uma devolução limitada pelo saldo e repetição idempotente. Os novos vínculos de veículos ainda precisam do ensaio equivalente. PGlite não substitui esse teste de concorrência.
 - A importação de PDFs sem quantidade ou identidade fiscal confirmada sempre permanece em conferência humana. Não presumir identidade ou propriedade de pallets.
 - Os dois veículos existentes no preflight do Frete precisarão de análise própria antes de novas ofertas. A migração preserva vínculos e viagens antigos, sem aprovação automática.
 - Esses itens mantêm a entrega como rascunho de revisão; não implantar os quatro pacotes como concluídos.
