@@ -11,7 +11,7 @@ import {renderGmailCentral,gmailCentralCall} from "./gmail-central.js";
 import {createItauTestPDF} from './itau-test-pdf.js';
 import ItauStandalone from './ItauStandalone.jsx';
 import {registryConflict} from "./registry-identity.js";
-import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj} from './customer-address.js';
+import {CUSTOMER_UFS,customerAddressError,normalizeCustomerAddress,validCustomerDocument,companyAddressPatch,consultarCnpj,mergeMissingCustomerDetails} from './customer-address.js';
 import DriverDirectory from "./DriverDirectory.jsx";
 import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
@@ -11025,10 +11025,9 @@ function CadModal({
         situacaoCadastral: upper(j.descricao_situacao_cadastral || j.situacao_cadastral || ''),
         telefone: j.ddd_telefone_1 || '', email: j.email || '',
       }).filter(([,value]) => value !== ''));
-      setF(x => String(x.documento || '').replace(/\D/g, '') !== n ? x : ({
-        ...x, ...optional, ...companyAddressPatch(j,n),
-      }));
-      setCnpjStatus('DADOS PREENCHIDOS PELA BRASILAPI. CONFIRA ANTES DE SALVAR.' +
+      setF(x => String(x.documento || '').replace(/\D/g, '') !== n ? x :
+        mergeMissingCustomerDetails(x,{...optional,...companyAddressPatch(j,n)}));
+      setCnpjStatus('DADOS VAZIOS COMPLETADOS PELA BRASILAPI; DADOS JÁ PREENCHIDOS PRESERVADOS. CONFIRA ANTES DE SALVAR.' +
         (ie ? '' : ' INSCRIÇÃO ESTADUAL NÃO INFORMADA PELA FONTE.'));
     } catch (e) {
       if (request === cnpjRequest.current) setCnpjStatus(e.message || 'FALHA NA BUSCA DO CNPJ. TENTE NOVAMENTE OU PREENCHA OS DADOS.');
