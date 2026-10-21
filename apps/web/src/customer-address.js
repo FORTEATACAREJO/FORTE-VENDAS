@@ -30,6 +30,20 @@ export function companyAddressPatch(company, expectedDocument) {
  // An unavailable field must not erase a previously verified address.
  return Object.fromEntries(Object.entries(raw).filter(([,v]) => v !== ''));
 }
+export function mergeMissingCustomerDetails(existing, imported) {
+ const result = {...(existing || {})};
+ for (const [key, value] of Object.entries(imported || {})) {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) continue;
+  if (key === 'documento' && result.documento && digits(result.documento) !== digits(value)) {
+   throw Error('A CONSULTA NÃO CORRESPONDE AO DOCUMENTO DO CLIENTE.');
+  }
+  if (key === 'consultadoEm') { result.consultadoEm = value; continue; }
+  // External data supplements a manually verified record: it never overwrites populated fields.
+  if (result[key] === null || result[key] === undefined || (typeof result[key] === 'string' && !result[key].trim())) result[key] = value;
+ }
+ return result;
+}
+
 export async function consultarCnpj(document, { consent = false, fetchImpl = fetch } = {}) {
  const d = digits(document);
  if (d.length !== 14 || !validCustomerDocument(d)) throw Error('INFORME UM CNPJ VÁLIDO COM 14 DÍGITOS. PARA CPF, PREENCHA O ENDEREÇO E CONSULTE O CEP.');
