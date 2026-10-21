@@ -827,6 +827,19 @@ export default function App() {
   const [workflowInitialTab,setWorkflowInitialTab]=useState("fornecedor");
   useEffect(() => {let active=true;if(!supabaseConfigured)return;loadCloudState().then(remote=>{if(!active)return;cloudReady.current=true;if(remote){const funcionarios=[...(remote.funcionarios||[])];for(const oficial of seed.funcionarios||[])if(!funcionarios.some(x=>x.id===oficial.id||String(x.cpf||"").replace(/\D/g,"")===oficial.cpf))funcionarios.push(oficial);setData(applyAuthUser({...remote,settings:{...seed.settings,...(remote.settings||{})},funcionarios,unidadesFiscaisHistoricas:remote.unidadesFiscaisHistoricas||seed.unidadesFiscaisHistoricas}))}else saveCloudState(data).catch(e=>console.error("FALHA AO ENVIAR BASE INICIAL AO SUPABASE",e))}).catch(e=>console.error("FALHA AO CARREGAR BASE SUPABASE",e));return()=>{active=false}},[]);
   useEffect(() => {saveData(data);if(!supabaseConfigured||!cloudReady.current||workflowBusy.current)return;clearTimeout(cloudTimer.current);cloudTimer.current=setTimeout(()=>saveCloudState(data).catch(e=>console.error("FALHA AO SALVAR BASE SUPABASE",e)),800);return()=>clearTimeout(cloudTimer.current)}, [data]);
+  async function commitCounterSale(buildNext) {
+    if (!supabaseConfigured || !cloudReady.current) throw new Error("A BASE NA NUVEM AINDA NÃO FOI CARREGADA. CONFIRA A CONEXÃO.");
+    if (workflowBusy.current) throw new Error("OPERAÇÃO EM GRAVAÇÃO. AGUARDE SUA CONFIRMAÇÃO.");
+    workflowBusy.current = true;
+    clearTimeout(cloudTimer.current);
+    try {
+      const next = buildNext(data);
+      const receipt = await saveCloudState(next);
+      if (!receipt) throw new Error("O SERVIDOR NÃO CONFIRMOU A GRAVAÇÃO.");
+      setData(applyAuthUser(receipt));
+      return receipt;
+    } finally { workflowBusy.current = false; }
+  }
   async function commitOrderWorkflow(body) {
     if (!supabaseConfigured) throw new Error("Esta operação exige conexão com o servidor.");
     if (workflowBusy.current) throw new Error("Aguarde a operação atual.");
@@ -3092,7 +3105,7 @@ export default function App() {
           />
         )}
         {tab === "balcao" && (
-          <Balcao data={data} onChange={setData} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
+          <Balcao data={data} onChange={setData} onCommit={commitCounterSale} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
         )}
         {tab === "externas" && (
           <VendasExternas
@@ -3117,10 +3130,10 @@ export default function App() {
         {tab === "diretas" && (
           <VendasDiretasPanel data={data} onChange={setData} currentUser={currentUser} onDistribuir={loadId=>setModal({type:"distribute",loadId})} onNotas={()=>setTab("conferencia")} onEmails={c=>c?iaConferirEmails(c):alert("VINCULE A NOTA A UMA CARGA PARA BUSCAR OS DOCUMENTOS.")}/>
         )}
-        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
+        {tab === "painelUnicoVendas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelUnicoVendas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={cargaId=>{setActiveLoadId(cargaId);setTab("painelCargas");}} />} /> }
         {tab === "comprasFornecedor" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} initialTab={workflowInitialTab} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "painelCompras" && <PurchasesDestinationPanel data={data} onNavigate={setTab} />}
-        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={()=>{}} />} /> }
+        {tab === "painelCargas" && <OperationSheet data={data} currentUser={currentUser} canEdit={canAccessTab("painelCargas", "editar")} onCommit={commitOrderWorkflow} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} renderInvoiceFiles={()=> <BancoNotasFiscais data={data} onChange={setData} currentUser={currentUser} onWorkflow={commitOrderWorkflow} onDireta={cargaId=>{setActiveLoadId(cargaId);setTab("painelCargas");}} />} /> }
         {tab === "ordensCarregamento" && <OrdersWorkspace onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onCommit={commitOrderWorkflow} currentUser={currentUser} initialTab="ordem" onNavigate={setTab} onBilling={v=>setModal({type:"emissorBoletos",canal:"CARGA DIRETA",vendaId:v.id})} />}
         {tab === "todasCargas" && (
           <TodasCargas
@@ -3494,7 +3507,7 @@ function pdfTabela(title, headers, rows, file, summary = []) {
   }
   doc.save(file);
 }
-function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
+export function Balcao({ data, onChange, onCommit, currentUser, onOpenBoleto }) {
   const unidades = data.unidades || [],
     clientes = data.clientes || [],
     produtos = (data.produtos || []).filter(isResaleProduct),
@@ -3540,6 +3553,35 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
   const [clienteRelatorioId, setClienteRelatorioId] = useState("");
   const [opsClienteSelecionadas, setOpsClienteSelecionadas] = useState([]);
   const [editVendaId, setEditVendaId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  async function gravarNoServidor(buildNext) {
+    if (savingRef.current) throw new Error("GRAVAÇÃO EM ANDAMENTO.");
+    if (typeof onCommit !== "function") throw new Error("A CONEXÃO DE GRAVAÇÃO DO BALCÃO NÃO ESTÁ DISPONÍVEL.");
+    savingRef.current = true;
+    setSaving(true);
+    try { return await onCommit(buildNext); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+  function novaOperacao(tipo = "VENDA") {
+    if (savingRef.current) return;
+    if ((itens.length || editVendaId) && !window.confirm("DESCARTAR OS ITENS NÃO GRAVADOS DESTA TELA? ISSO NÃO APAGA VENDAS JÁ REGISTRADAS.")) return;
+    setTipoAtendimento(tipo);
+    setEditVendaId("");
+    setClienteId("");
+    setProdutoId("");
+    setQtd("");
+    setItens([]);
+    setItensConfirmados(false);
+    setPagamentosMistos([]);
+    setEntrega("SEM ENTREGA");
+    setBuscaOrcamento("");
+    setSituacaoPallets("");
+    setPalletsForte("");
+    setPalletsCliente("");
+    setJustificativaPallets("");
+    try { localStorage.removeItem(BALCAO_DRAFT_KEY); } catch {}
+  }
   const vendas = data.vendasBalcao || [];
   const caixas = data.caixasBalcao || [];
   const c = clientes.find((x) => x.id === clienteId),
@@ -3671,28 +3713,26 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         ? frete
         : 0,
     total = subtotal + freteCobradoPelaForte;
-  function abrirCaixa() {
-    if (caixaAberto)
-      return alert("JÁ EXISTE UM CAIXA ABERTO PARA ESTA UNIDADE HOJE.");
+  async function abrirCaixa() {
+    if (savingRef.current) return;
+    if (caixaAberto) return alert("JÁ EXISTE UM CAIXA ABERTO PARA ESTA UNIDADE HOJE.");
     const abertura = parseMoneyInput(saldoInicial || "0");
     if (!Number.isFinite(abertura) || abertura < 0) return alert("SALDO INICIAL INVÁLIDO.");
-    onChange((d) => ({
-      ...d,
-      caixasBalcao: [
-        ...(d.caixasBalcao || []),
-        {
-          id: uid("cx"),
-          data: todayISO(),
-          unidade,
+    if (!unidade) return alert("SELECIONE A UNIDADE DO CAIXA.");
+    try {
+      await gravarNoServidor((d) => ({ ...d,
+        caixasBalcao: [...(d.caixasBalcao || []), {
+          id: uid("cx"), data: todayISO(), unidade,
           operador: currentUser?.nome || "",
-          abertoEm: new Date().toISOString(),
-          saldoInicial: abertura,
+          abertoEm: new Date().toISOString(), saldoInicial: abertura,
           status: "ABERTO",
-        },
-      ],
-    }));
-    setSaldoInicial("");
-    alert("CAIXA ABERTO.");
+        }],
+      }));
+      setSaldoInicial("");
+      alert("CAIXA ABERTO E CONFIRMADO NA NUVEM.");
+    } catch (error) {
+      alert("CAIXA NÃO FOI ABERTO NO SERVIDOR. NENHUMA ABERTURA FOI CONFIRMADA.\n\n" + (error?.message || error));
+    }
   }
   function conferirCaixa() {
     if (!caixaAberto) return alert("NÃO HÁ CAIXA ABERTO PARA CONFERIR.");
@@ -4709,7 +4749,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         : `VENDA ${numeroVenda} GERADA. O ORÇAMENTO ${o.numeroOrcamento || o.id} FOI ATENDIDO INTEGRALMENTE.`,
     );
   }
-  function salvar(status = "CONCLUÍDA") {
+  async function salvar(status = "CONCLUÍDA") {
+    if (savingRef.current) return;
     if (!c || !effectiveItems.length)
       return alert(
         "SELECIONE O CLIENTE E INFORME AO MENOS UM PRODUTO COM QUANTIDADE.",
@@ -4853,7 +4894,8 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         status === "ORÇAMENTO" ? nowISO() : original?.reservaCriadaEm,
       status,
     };
-    onChange((d) => {
+    try {
+    await gravarNoServidor((d) => {
       const freteLanc =
         status === "CONCLUÍDA" && entrega === "COM ENTREGA"
           ? {
@@ -4970,6 +5012,10 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
         ],
       };
     });
+    } catch (error) {
+      alert("VENDA / ORÇAMENTO NÃO FOI GRAVADO. OS ITENS CONTINUAM NA TELA PARA TENTAR NOVAMENTE.\n\n" + (error?.message || error));
+      return;
+    }
     setItens([]);
     setItensConfirmados(false);
     setEditVendaId("");
@@ -5511,6 +5557,14 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           </button>
         </div>
       </div>
+      <div className="balcaoFastActions" role="group" aria-label="Atalhos da Venda Balcão">
+        <button type="button" onClick={() => novaOperacao("VENDA")} disabled={saving}>+ NOVA VENDA</button>
+        <button type="button" className="secondary" onClick={() => novaOperacao("ORCAMENTO")} disabled={saving}>+ NOVO ORÇAMENTO</button>
+        <button type="button" className="secondary" onClick={() => document.getElementById("balcao-produto-select")?.focus()}>PRODUTOS</button>
+        <button type="button" className="secondary" onClick={() => document.getElementById("balcao-orcamentos")?.scrollIntoView({behavior:"smooth",block:"start"})}>ORÇAMENTOS</button>
+        <button type="button" className="dangerBtn" onClick={() => novaOperacao(tipoAtendimento)} disabled={saving || (!itens.length && !editVendaId)}>EXCLUIR RASCUNHO</button>
+      </div>
+      {saving && <p role="status" className="alert warning">CONFIRMANDO GRAVAÇÃO NO SERVIDOR. NÃO REPITA A OPERAÇÃO.</p>}
       <div className="transportBox">
         <Field label="1. TIPO DE ATENDIMENTO">
           <select value={tipoAtendimento} onChange={e=>setTipoAtendimento(e.target.value)} disabled={!!editVendaId}>
@@ -5541,7 +5595,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
                   onChange={(e) => setSaldoInicial(e.target.value)}
                 />
               </Field>
-              <button onClick={abrirCaixa}>ABRIR CAIXA</button>
+              <button onClick={abrirCaixa} disabled={saving}>ABRIR CAIXA</button>
             </>
           ) : (
             <>
@@ -5725,6 +5779,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
       <div className="miniGrid">
         <Field label="PRODUTO">
           <select
+            id="balcao-produto-select"
             value={produtoId}
             onChange={(e) => setProdutoId(e.target.value)}
           >
@@ -5752,6 +5807,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
             placeholder="DIGITE E PRESSIONE ENTER"
           />
         </Field>
+        <button type="button" onClick={addItem} disabled={saving}>+ ADICIONAR ITEM</button>
         <Field label="PREÇO TABELA">
           <input disabled value={money(tabela)} />
         </Field>
@@ -5851,14 +5907,14 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
               localStorage.setItem(BALCAO_DRAFT_KEY, JSON.stringify(itens));
               setItensConfirmados(true);
               alert(
-                `${itens.length} ITEM(NS) SALVO(S). AGORA ESCOLHA GERAR ORÇAMENTO OU CONCLUIR A VENDA.`,
+                `${itens.length} ITEM(NS) CONFIRMADO(S) NESTE COMPUTADOR. PARA GRAVAR NO SERVIDOR, CLIQUE EM GERAR ORÇAMENTO OU GERAR / CONCLUIR VENDA.`,
               );
             } catch {
               alert("NÃO FOI POSSÍVEL SALVAR OS ITENS.");
             }
           }}
         >
-          SALVAR
+          CONFIRMAR ITENS
         </button>
         <span className="note">
           <b>{itens.length} ITEM(NS) NA LISTA</b>
@@ -6011,7 +6067,7 @@ function Balcao({ data, onChange, currentUser, onOpenBoleto }) {
           </div>
         </>
       )}
-      <div className="transportBox budgetSearchBox">
+      <div className="transportBox budgetSearchBox" id="balcao-orcamentos">
         <div className="sectionHead">
           <div>
             <h3>ORÇAMENTOS — CONSULTA E SALDOS PENDENTES</h3>
