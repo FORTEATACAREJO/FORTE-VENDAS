@@ -91,3 +91,16 @@ test('frete interno exige ordem pronta e autorização, preserva valor ao revisa
  s=execute(s,{...b,cargaId:c.id,fretePorTon:999}).state;assert.equal(s.cargas[0].freteValor,4000);
  s.documentos=[{cargaId:c.id,categoria:'COMPROVANTE FRETE',validationStatus:'VALIDADO'}];assert.throws(()=>execute(s,{...financial,fretePorTon:110}),/revisão financeira/);
 });
+
+test('RF06: pedido de 800 sacos em conjunto 38t exige aviso e preserva 800 ao expedir 760',()=>{
+ const original=base();original.motoristas[0].capacidadeMaximaKg=38000;
+ const confirmation=capacityCheck(original.motoristas[0],40000,{request:true});assert.equal(confirmation.above,true);
+ assert.throws(()=>execute(original,supplier),/acima da capacidade/);
+ let state=execute(original,{...supplier,capacityConfirmation:confirmation.snapshot}).state;
+ const order=structuredClone(state.comprasFornecedor[0]),load=state.cargas[0];assert.equal(order.qtd,800);assert.equal(load.pesoKg,40000);
+ assert.throws(()=>execute(state,{...supplier,action:'LOAD_ASSIGN',cargaId:load.id,motoristaId:'m'}),/capacidade/);
+ state=execute(state,{action:'LOAD_SHIPMENT',cargaId:load.id,motoristaId:'m',itens:[{produtoId:'p',qtd:760}],motivo:'Quantidade ajustada à capacidade aprovada'}).state;
+ assert.deepEqual(state.comprasFornecedor[0],order);assert.equal(state.cargas[0].qtdPedida,800);assert.equal(state.cargas[0].pesoPedidoKg,40000);assert.equal(state.cargas[0].qtd,760);assert.equal(state.cargas[0].pesoKg,38000);
+ assert.throws(()=>execute(state,{action:'LOAD_SHIPMENT',cargaId:load.id,motoristaId:'m',itens:[{produtoId:'p',qtd:801}],motivo:'Excesso não permitido'}),/superar/);
+ assert.throws(()=>capacityCheck(original.motoristas[0],40000),/acima da capacidade/);
+});

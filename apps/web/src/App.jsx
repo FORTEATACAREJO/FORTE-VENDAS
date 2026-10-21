@@ -1,3 +1,4 @@
+import {useForteNavigation,useForteLayer} from './use-forte-navigation.js';
 import EditSale from './EditSale.jsx';
 import WorkspaceMenu from './WorkspaceMenu.jsx';
 import {workspaceNavigation} from './workspace-navigation.mjs';
@@ -15,7 +16,7 @@ import {Brand, MenuButton, Drawer, BottomNav, useDrawer} from './ForteUI.jsx';
 import {customerName} from "./customer-name.js";
 import { PROFILE_CODES, PROFILE_LABELS, normalizeProfile, profileOptionsFor } from "./profiles.js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import PalletsV47 from "./PalletsV47.jsx";
+import PalletsPanel from "./PalletsPanel.jsx";
 import PaymentSettingsV47 from "./PaymentSettingsV47.jsx";
 import HomeCompactV47 from "./HomeCompactV47.jsx";
 import EmployeesV654 from "./EmployeesV654.jsx";
@@ -785,18 +786,21 @@ const custoFornecedor = (d, produtoId, condicaoPagamento, marca = "") => {
 };
 export default function App() {
   const drawer=useDrawer();
+  const financeMode=new URLSearchParams(window.location.search).get("app")==="financeiro",navigationRoot=financeMode?"group:financeiro":"home";
   const [data, setData] = useState(() => applyAuthUser(loadData(seed)));
   const cloudReady = useRef(false);
   const [cloudError,setCloudError]=useState("");
   useEffect(()=>{const listener=e=>setCloudError(e.detail||"");window.addEventListener("forte-cloud-status",listener);return()=>window.removeEventListener("forte-cloud-status",listener)},[]);
   const cloudTimer = useRef(null);
-  const [tab, setTab] = useState(()=>new URLSearchParams(window.location.search).get("app")==="financeiro"?"group:financeiro":"home");
+  const [requestedTab, setRouteTab, tabHistory] = useForteNavigation(financeMode?"financeiro":"vendas",navigationRoot);
+  const setTab=(screen,options)=>setRouteTab(financeMode&&screen==="home"?navigationRoot:screen,options);
   const [globalSearch, setGlobalSearch] = useState("");
   const [selectedSales, setSelectedSales] = useState([]);
   const [driverSearch, setDriverSearch] = useState("");
   const [driverId, setDriverId] = useState("");
   const [activeLoadId, setActiveLoadId] = useState("");
   const [modal, setModal] = useState(null);
+  useForteLayer("vendas-editor",modal,setModal);
   const [cadType, setCadType] = useState("clientes");
   const [cadSearch, setCadSearch] = useState("");
   const [walletSearch, setWalletSearch] = useState("");
@@ -838,6 +842,7 @@ export default function App() {
       const remote=await loadCloudState();
       if (!remote) throw new Error("Operação processada; atualize os dados para conferir o resultado.");
       setData(applyAuthUser(remote));
+      tabHistory.markClean();
       return receipt;
     } finally {workflowBusy.current=false;}
   }
@@ -873,6 +878,7 @@ export default function App() {
     return MODULE_GROUPS.find((g) => g.modules.includes(screen))?.id || "";
   };
   const canAccessGroup = (groupId, action = "visualizar") => {
+    if(financeMode&&groupId!=="financeiro")return false;
     if (groupId === "financeiro") return isMaster && cloudReady.current;
     if (isAdmin) return true;
     const permissions = currentUser?.permissoes || {};
@@ -887,12 +893,14 @@ export default function App() {
     return !!rule[action] || (action !== "visualizar" && !!rule.editar);
   };
   const canAccessTab = (screen, action = "visualizar") => canAccessGroup(groupForTab(screen), action);
+  const tab=requestedTab===navigationRoot||(requestedTab.startsWith("group:")?canAccessGroup(requestedTab.slice(6)):canAccessTab(requestedTab))?requestedTab:navigationRoot;
+  useEffect(()=>tabHistory.setGuard(screen=>screen===navigationRoot||(screen.startsWith("group:")?canAccessGroup(screen.slice(6)):canAccessTab(screen))));
   const salesArea=salesAreaFor(tab);
   const navigation = workspaceNavigation(canAccessGroup,canAccessTab);
   useEffect(() => {
     const requestedGroup = tab.startsWith("group:") ? tab.slice(6) : groupForTab(tab);
     if (tab !== "home" && requestedGroup && !canAccessGroup(requestedGroup))
-      setTab("home");
+      setTab("home",{replace:true,force:true});
   }, [isAdmin, tab, currentUser?.id]);
   const vendasSel = data.vendas.filter((v) => selectedSales.includes(v.id));
   const selKg = vendasSel.reduce((s, v) => s + Number(v.pesoKg || 0), 0);
@@ -2231,8 +2239,8 @@ export default function App() {
         </header>
         {tab !== "home" && (
           <div className="moduleBreadcrumb">
-            <button className="ghost dark" onClick={() => setTab("home")}>
-              ← PAINEL PRINCIPAL
+            <button className="ghost dark" onClick={() => tabHistory.back()}>
+              ← VOLTAR
             </button>
             {!tab.startsWith("group:") && (
               <button
@@ -2344,7 +2352,9 @@ export default function App() {
         {tab === "home" && (
           <HomeCompactV47
             data={data}
-            onSale={()=>setModal({type:"sale"})}
+            onSale={()=>{setWorkflowInitialTab("venda");setTab("comprasFornecedor");}}
+            onPurchase={()=>{setWorkflowInitialTab("fornecedor");setTab("comprasFornecedor");}}
+            canBuy={canAccessTab("comprasFornecedor","editar")}
             navigation={navigation}
             canSell={canAccessGroup("vendas")}
             onNavigate={setTab}
@@ -2353,7 +2363,7 @@ export default function App() {
         <div className="systemDate">
           <b>DATA/HORA DO SISTEMA:</b> {stamp()}
         </div>
-        <BottomNav active={salesBottomTab(tab)} items={[{id:"home",label:"Início",icon:"home"},...(canAccessGroup("vendas")?[{id:"group:vendas",label:"Vendas",icon:"file"},{id:"new-sale",label:"Vender",icon:"plus",primary:true}]:[]),...(canAccessTab("painelCargas")?[{id:"painelCargas",label:"Cargas",icon:"truck"}]:[])]} onSelect={id=>id==="new-sale"?setModal({type:"sale"}):setTab(id)} onMore={()=>drawer.setOpen(true)}/>
+        <BottomNav active={salesBottomTab(tab)} items={[{id:"home",label:"Início",icon:"home"},...(canAccessGroup("vendas")?[{id:"painelUnicoVendas",label:"Vendas",icon:"file"},{id:"new-sale",label:"Vender",icon:"plus",primary:true}]:[]),...(canAccessTab("painelCargas")?[{id:"painelCargas",label:"Cargas",icon:"truck"}]:[])]} onSelect={id=>{if(id==="new-sale"){setWorkflowInitialTab("venda");setTab("comprasFornecedor");}else setTab(id);}} onMore={()=>drawer.setOpen(true)}/>
         {tab !== "home" && !tab.startsWith("group:") && tab !== "clientes" && (
           <ModuleAttachBar
             data={data}
@@ -3074,10 +3084,9 @@ export default function App() {
           />
         )}
         {tab === "paletes" && (
-          <PalletsV47
+          <PalletsPanel
             data={data}
-            onChange={setData}
-            audit={audit}
+            canEdit={canAccessTab("paletes","editar")}
             currentUser={currentUser}
           />
         )}

@@ -45,8 +45,8 @@ Deno.serve(async(req)=>{
   const {data:row,error:stateError}=await vendas.rpc('fc_carregar_estado');if(stateError)throw stateError;
   const state=row.estado,c=(state.cargas||[]).find(x=>x.id===body.cargaId&&x.status!=='CANCELADA');
   if(!c?.numeroPedidoFornecedor||!c.ordemRevisadaEm||!c.itens?.length)throw new Error('Revise e grave a ordem no Forte Vendas antes de enviá-la.');
-  const m=(state.motoristas||[]).find(x=>x.id===c.motoristaId),driver=drivers.find(x=>x.id===m?.freteMotoristaId);if(!driver||driver.status_cadastro!=='aprovado')throw new Error('Selecione um motorista aprovado e sincronizado do Forte Frete.');
-  const vehicle=driver.veiculos_motorista.find(v=>v.id===m.freteVeiculoId&&v.ativo);if(!vehicle||Number(c.pesoKg)>Number(vehicle.capacidade_efetiva_t||vehicle.capacidade_t||0)*1000)throw new Error('Conjunto inválido ou peso acima da capacidade.');
+  const m=(state.motoristas||[]).find(x=>x.id===c.motoristaId),driver=drivers.find(x=>x.id===m?.freteMotoristaId);if(!driver||driver.status_cadastro!=='aprovado'||!driver.validade_cnh||driver.validade_cnh<new Date().toISOString().slice(0,10))throw new Error('Selecione um motorista aprovado e sincronizado do Forte Frete.');
+  const vehicle=driver.veiculos_motorista.find(v=>v.id===m.freteVeiculoId&&v.ativo&&v.status_aprovacao==='APROVADO');if(!vehicle||Number(c.pesoKg)>Number(vehicle.capacidade_efetiva_t||vehicle.capacidade_t||0)*1000)throw new Error('Conjunto inválido ou peso acima da capacidade.');
   if(body.action==='DRIVER_DETAILS'){
    if(!['MASTER','ADMINISTRADOR'].includes(p.perfil)&&p.permissoes?.verDadosPagamentoMotorista!==true)return Response.json({error:'Sem permissão para dados de pagamento do motorista.'},{status:403,headers});
    let payment=null;
