@@ -4,8 +4,8 @@ import {workspaceNavigation,workspaceItemActive} from '../apps/web/src/workspace
 test('three work panels and one logistics panel preserve unique legacy destinations',()=>{
  const nav=workspaceNavigation(()=>true,()=>true);
  assert.deepEqual(nav.main.map(x=>x.id),['home','painelUnicoVendas','painelCompras','paletes','painelCargas']);
- assert.deepEqual(nav.more.map(x=>x.id),['group:vendas','group:patio','group:logistica','group:conferencia','group:financeiro','group:fornecedores','group:cadastros','group:relatorios','group:integracoes']);
- for(const [screen,group] of [['diretas','vendas'],['estoque','patio'],['paletes','patio'],['itau','cobrancas'],['painelCargas','vendas']])assert.equal([...nav.main,...nav.more].filter(item=>workspaceItemActive(item,screen,group)).length,1,screen);
+ assert.deepEqual(nav.more.map(x=>x.id),['whatsapp','group:vendas','group:patio','group:logistica','group:conferencia','group:financeiro','group:fornecedores','group:cadastros','group:relatorios','group:integracoes']);
+ for(const [screen,group] of [['whatsapp','vendas'],['diretas','vendas'],['estoque','patio'],['paletes','patio'],['itau','cobrancas'],['painelCargas','vendas']])assert.equal([...nav.main,...nav.more].filter(item=>workspaceItemActive(item,screen,group)).length,1,screen);
 });
 test('restricted users keep their authorized entry points without gaining finance or stock access',()=>{
  const collections=workspaceNavigation(g=>g==='cobrancas',()=>false);
