@@ -32,7 +32,7 @@ function Harness(){
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
 `;
-const bundle=await build({stdin:{contents:source,resolveDir:process.cwd(),loader:'jsx'},bundle:true,write:false,jsx:'automatic',format:'iife',outfile:'balcao-smoke.js'});
+const bundle=await build({stdin:{contents:source,resolveDir:process.cwd(),loader:'jsx'},bundle:true,write:false,jsx:'automatic',format:'iife',outfile:'balcao-smoke.js',define:{'import.meta.env':'{"VITE_SUPABASE_URL":"","VITE_SUPABASE_ANON_KEY":"","MODE":"test"}'}});
 const css=bundle.outputFiles.find(f=>f.path.endsWith('.css'))?.text || '';
 const js=bundle.outputFiles.find(f=>f.path.endsWith('.js'))?.text;
 assert(js,'Bundle do balcão não gerado');
@@ -47,7 +47,7 @@ try{
   if(css)await page.addStyleTag({content:css});
   await page.addScriptTag({content:js});
   const button=name=>page.getByRole('button',{name,exact:true});
-  await button('ABRIR CAIXA').waitFor();
+  try { await button('ABRIR CAIXA').waitFor({timeout:10000}); } catch(error) { throw Error('BALCÃO NÃO RENDERIZOU: '+JSON.stringify(errors)+' TEXT '+(await page.locator('body').innerText()).slice(0,700)+' '+error.message); }
   await button('ABRIR CAIXA').click();
   await page.waitForFunction(()=>window.messages.some(x=>x.includes('NENHUMA ABERTURA FOI CONFIRMADA')));
   assert.equal(await page.evaluate(()=>window.state().caixasBalcao.length),0);
