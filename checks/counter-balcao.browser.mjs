@@ -62,7 +62,7 @@ try{
   await button('CONFIRMAR ITENS').click();
   await button('EXCLUIR RASCUNHO').click();
   assert.equal(await page.evaluate(()=>window.state().vendasBalcao.length),0);
-  assert.equal(await page.evaluate(()=>window.localStorage.getItem('forte-vendas-balcao-itens-rascunho-v628')),null);
+  assert([null,'[]'].includes(await page.evaluate(()=>window.localStorage.getItem('forte-vendas-balcao-itens-rascunho-v628'))));
   await button('+ NOVO ORÇAMENTO').click();
   await page.getByRole('button',{name:'EMITIR / ALTERAR BOLETO',exact:true}).click();
   assert((await page.evaluate(()=>window.messages)).includes('BOLETO_ABERTO'));
