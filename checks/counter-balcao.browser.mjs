@@ -28,11 +28,12 @@ function Harness(){
      window.saved=newState;
      return newState;
    }}
-   currentUser={{nome:'Operador de teste',master:true}}/>;
+   currentUser={{id:'fixture-user',empresaId:'fixture-company',nome:'Operador de teste',master:true}}/>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
 `;
 const bundle=await build({stdin:{contents:source,resolveDir:process.cwd(),loader:'jsx'},bundle:true,write:false,jsx:'automatic',format:'iife',outfile:'balcao-smoke.js',define:{'import.meta.env':'{"VITE_SUPABASE_URL":"","VITE_SUPABASE_ANON_KEY":"","MODE":"test"}'}});
+const scopedKey='forte:balcao:v2:'+JSON.stringify(['fixture-company','fixture-user','FILIAL - CALDAS NOVAS/GO']);
 const css=bundle.outputFiles.find(f=>f.path.endsWith('.css'))?.text || '';
 const js=bundle.outputFiles.find(f=>f.path.endsWith('.js'))?.text;
 assert(js,'Bundle do balcão não gerado');
@@ -58,11 +59,12 @@ try{
   await page.locator('#balcao-produto-select').selectOption('p');
   await page.getByPlaceholder('DIGITE E PRESSIONE ENTER').fill('2');
   await button('+ ADICIONAR ITEM').click();
-  await page.waitForFunction(()=>window.localStorage.getItem('forte-vendas-balcao-itens-rascunho-v628')?.includes('CIMENTO CP II'));
+  await page.waitForFunction(key=>window.localStorage.getItem(key)?.includes('CIMENTO CP II'),scopedKey);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('forte-vendas-balcao-itens-rascunho-v628')),null);
   await button('CONFIRMAR ITENS').click();
   await button('EXCLUIR RASCUNHO').click();
   assert.equal(await page.evaluate(()=>window.state().vendasBalcao.length),0);
-  assert([null,'[]'].includes(await page.evaluate(()=>window.localStorage.getItem('forte-vendas-balcao-itens-rascunho-v628'))));
+  assert([null,'[]'].includes(await page.evaluate(key=>window.localStorage.getItem(key),scopedKey)));
   await button('+ NOVO ORÇAMENTO').click();
   await page.getByRole('button',{name:'EMITIR / ALTERAR BOLETO',exact:true}).click();
   assert((await page.evaluate(()=>window.messages)).includes('BOLETO_ABERTO'));
