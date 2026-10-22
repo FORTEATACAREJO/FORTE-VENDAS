@@ -22,11 +22,11 @@ Deno.serve(async (request) => {
     const admin = createClient(url, service);
     const { data: adminProfile } = await admin.from("fc_perfis")
       .select("empresa_id,perfil,ativo,status_aprovacao,must_change_password").eq("user_id", user.id).single();
+    const scope=await admin.rpc('access_module_context',{p_user:user.id,p_app:'vendas'});if(scope.error||!scope.data?.isAdmin)throw Error('ADMINISTRAÇÃO DO FORTE VENDAS OBRIGATÓRIA.');if(adminProfile)adminProfile.perfil=scope.data.role;
     if (!adminProfile?.ativo || adminProfile.status_aprovacao !== "APROVADO" || adminProfile.must_change_password || !["MASTER", "ADMINISTRADOR"].includes(adminProfile.perfil)) {
       throw new Error("OPERAÇÃO EXCLUSIVA DE ADMIN OU MASTER.");
     }
 
-    const scope=await admin.rpc('access_module_context',{p_user:user.id,p_app:'vendas'});if(scope.error||!scope.data?.isAdmin)throw Error('ADMINISTRAÇÃO DO FORTE VENDAS OBRIGATÓRIA.');
     const body = request.method === "POST" ? await request.json() : {};
     const action = String(body.action || "LIST").toUpperCase();
     if (action === "LIST") {
