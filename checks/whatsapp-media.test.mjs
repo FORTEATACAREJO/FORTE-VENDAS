@@ -15,6 +15,8 @@ test('nome correto é mantido e extensão incompatível é corrigida',()=>{
  assert.equal(file([255,216,255],'image/jpeg','CNH.jpeg').filename,'CNH.jpeg');
  assert.equal(file([255,216,255],'image/jpeg','CNH.pdf').filename,'CNH.jpg');
  assert.equal(file(Buffer.from('%PDF-1.7'),'application/pdf','pedido.pdf').filename,'pedido.pdf');
+ const document=file(Buffer.from('PK'),'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pedido.docx');
+ assert.equal(document.filename,'pedido.docx');assert.equal(document.previewable,false);
 });
 test('nome inválido no Windows é saneado; arquivos ativos não são pré-visualizados',()=>{
  const out=file(Buffer.from('<svg onload="bad()"/>'),'image/svg+xml','../CON');
