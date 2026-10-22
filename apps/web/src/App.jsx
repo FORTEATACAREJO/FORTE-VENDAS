@@ -1,3 +1,4 @@
+import SupplierBuyerCodes from './SupplierBuyerCodes.jsx';
 import WhatsappInbox,{inboxCall} from './WhatsappInbox.jsx';
 import {counterDraftKey,readCounterDraft,counterCancellationBlock} from './counter-draft.js';
 import {useForteNavigation,useForteLayer} from './use-forte-navigation.js';
@@ -893,6 +894,7 @@ export default function App() {
     if (["estoque", "paletes"].includes(screen)) return "patio";
     if (["gmail", "integracoes", "integracoesFinanceiras"].includes(screen)) return "integracoes";
     if (screen === "itau") return "cobrancas";
+    if(screen==="parametrosFinanceiros")return "cadastros";
     return MODULE_GROUPS.find((g) => g.modules.includes(screen))?.id || "";
   };
   const canAccessGroup = (groupId, action = "visualizar") => {
@@ -2277,6 +2279,7 @@ export default function App() {
         {tab.startsWith("group:") &&
           (() => {
             const gid = tab.split(":")[1];
+            if(gid === "cadastros")return null;
             if(gid === "vendas")return <OperationsMenu canAccess={canAccessTab} onNavigate={setTab}/>;
             if (gid === "integracoes")
               return (
@@ -3008,7 +3011,7 @@ export default function App() {
             ))}
           </section>
         )}
-        {tab === "cadastros" && (
+        {(tab === "cadastros" || tab === "group:cadastros") && (
           <section className="card">
             <div className="sectionHead">
               <div>
@@ -3065,8 +3068,8 @@ export default function App() {
               {isMaster && (
                 <>
                   <button onClick={() => setTab("parametrosFinanceiros")}>
-                    <b>PARAMETRIZAÇÃO FINANCEIRA — MASTER</b>
-                    <small>CAIXA • CONTAS A RECEBER • CONCILIAÇÃO</small>
+                    <b>REGRAS DAS FORMAS DE PAGAMENTO</b>
+                    <small>CONFIGURAÇÃO OPCIONAL • NÃO LIBERA NEM LIMITA O ACESSO</small>
                   </button>
                   <button onClick={() => setModal({ type: "cloudHealth" })}>
                     <b>☁ SAÚDE DA NUVEM</b>
@@ -3366,7 +3369,7 @@ export default function App() {
         />
       )}{" "}
       {modal?.type === "funcionarios" && (
-        <EmployeesV654 data={data} onChange={setData} currentUser={currentUser} onClose={() => setModal(null)} />
+        <EmployeesV654 onRefresh={async()=>{const remote=await loadCloudState();if(remote)setData(applyAuthUser(remote));}} data={data} onChange={setData} currentUser={currentUser} onClose={() => setModal(null)} />
       )}{" "}
       {modal?.type === "cloudHealth" && <CloudHealth onClose={() => setModal(null)} />}{" "}
       {modal?.type === "integracoes" && (
@@ -10839,7 +10842,6 @@ const META = {
       ["enderecoFiscal", "ENDEREÇO FISCAL"],
       ["emailFiscal", "E-MAIL DE NF-E", "email"],
       ["observacoesFiscais", "OBSERVAÇÕES FISCAIS"],
-      ["codigoForte", "CÓDIGO FORTE"],
       ["whatsapp", "WHATSAPP"],
       ["emailPedidos", "E-MAIL DE PEDIDOS", "email"],
       ["emailPallets", "E-MAIL LIBERAÇÃO PALLETS", "email"],
@@ -11182,6 +11184,7 @@ function CadModal({
     const main = type === "produtos" ? "nome" : meta.fields[0][0];
     if (!f[main]) return alert("PREENCHA O CAMPO PRINCIPAL.");
     let obj = { ...f };
+    if(type==='fornecedores')obj.codigosPorCnpj={...(f.codigosPorCnpj||{})};
     if(type==='clientes'){
       const error=customerAddressError(obj);if(error)return alert(error);
       obj=normalizeCustomerAddress(obj);
@@ -11454,6 +11457,7 @@ function CadModal({
             </div>
           )}
           {type === 'clientes' && cnpjStatus && <p className="note" role="status">{cnpjStatus}</p>}
+          {type==='fornecedores'&&<SupplierBuyerCodes supplier={f} units={data.unidades||[]} onChange={setF}/>}
           <div className="miniGrid">
             {meta.fields.map(([k, l, t]) => (
               <Field key={k} label={l}>
