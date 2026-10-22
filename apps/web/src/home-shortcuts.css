@@ -1,0 +1,50 @@
+.forte-home{max-width:1100px;margin:0 auto}
+.forte-home .home-heading{margin:16px 0 14px}
+.forte-home .home-heading h2{font-size:23px!important;margin:0 0 4px;color:#092a53}
+.forte-home .home-heading p{font-size:14px;margin:0;color:#526481}
+.forte-home .home-shortcuts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.forte-home .home-shortcut{position:relative;display:flex;align-items:center;gap:10px;min-width:0;min-height:82px;padding:14px;border:1px solid #dce5f0;border-radius:14px;background:#fff;color:#0d2140;text-align:left;text-decoration:none;text-transform:none;box-sizing:border-box;box-shadow:0 2px 6px #092a5305}
+.forte-home .home-shortcut:hover{border-color:#779dc9;background:#f7faff}
+.forte-home .home-shortcut.central{background:#092a53;color:#fff;border-color:#092a53}
+.forte-home .home-shortcut.whatsapp{background:#e8f8ee;border-color:#b7dfc5;color:#075c30}
+.home-shortcut-icon{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;background:#eaf1ff;color:#1262da;border-radius:10px}
+.home-shortcut-icon svg{width:21px;height:21px}
+.central .home-shortcut-icon{background:#ffffff20;color:#fff}.whatsapp .home-shortcut-icon{background:#cdefd9;color:#08763b}
+.home-shortcut-copy{min-width:0}.home-shortcut-copy b{display:block;font-size:14px;line-height:1.25;overflow-wrap:anywhere}.home-shortcut-copy small{display:block;margin-top:4px;font-size:11px;line-height:1.3;opacity:.8}
+.home-unread{position:absolute;right:6px;top:5px;min-width:18px;padding:1px 4px;border-radius:12px;background:#c31730;color:#fff;text-align:center;font-size:11px;font-weight:bold}
+.home-panels h3{font-size:14px;margin:20px 0 10px;color:#526481}
+.forte-home .home-panel-links{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.forte-home .home-panel-links button{display:flex;justify-content:center;align-items:center;gap:6px;min-width:0;min-height:46px;padding:8px 4px;border:1px solid #ccdcef;border-radius:10px;background:#e8f0fc;color:#154c91;text-transform:none;font-size:13px!important}
+.home-panel-links svg{width:18px;height:18px;flex-shrink:0}
+.forte-home .home-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+.forte-home .home-summary button{display:flex;align-items:center;gap:10px;min-width:0;min-height:68px;padding:12px;border:1px solid #e0e7ef;border-radius:12px;background:#fff;color:#0d2140;text-align:left;text-transform:none}
+.home-summary svg{width:22px;height:22px;flex-shrink:0;color:#1262da}.home-summary button>span:first-of-type{flex:1;min-width:0}.home-summary strong{display:block;font-size:20px;line-height:1.2}.home-summary button>span>span{font-size:12px;line-height:1.3;display:block}
+.forte-vendas .forte-header .globalSearchWrap{order:4;max-width:none;flex-basis:100%;min-width:0}
+.forte-vendas .forte-header .headerActions{margin-left:auto;flex:0 1 auto!important}
+.forte-vendas .forte-header .mode{display:block;max-width:160px!important;text-align:right}
+.forte-vendas .drawer-system-actions{border-top:1px solid #ffffff30;margin-top:16px;padding-top:16px}
+.forte-vendas .drawer-system-actions [data-forte-top-actions]{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.forte-vendas .drawer-system-actions [data-forte-top-actions]>div{width:100%}
+.forte-vendas .drawer-system-actions .forte-access-admin>button,.forte-vendas .drawer-system-actions .forte-share-actions>button{width:100%}
+.forte-vendas .forte-drawer .userSessionBox{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;margin-top:16px}
+@media(max-width:760px){
+ .forte-home .home-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .forte-home .home-shortcut{padding:12px 10px;gap:8px;min-height:78px}
+ .forte-vendas .forte-header.dashboardHeader{min-height:0;padding:10px 14px!important;gap:8px!important;margin-bottom:12px!important}
+ .forte-vendas .forte-header .forte-brand{width:92px;margin-right:auto}
+ .forte-vendas .forte-header .forte-brand svg{width:64px;height:12px}
+ .forte-vendas .forte-header .forte-brand strong{font-size:23px}
+ .forte-vendas .forte-header .forte-brand>span{font-size:10px}
+ .forte-vendas .forte-header .forte-brand>b{font-size:9px;padding:4px 8px;margin-top:3px}
+ .forte-vendas .forte-header .headerActions{max-width:130px}
+ .forte-home .home-panel-links{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .forte-home .home-heading{margin:12px 0}.forte-home .home-heading h2{font-size:21px!important}
+}
+@media(max-width:350px){.home-shortcut-copy b{font-size:13px}.home-shortcut-copy small{font-size:10px}.home-shortcut-icon{flex-basis:26px;width:26px;height:30px}.forte-home .home-shortcut{gap:6px;padding:10px 8px}}
+
+.forte-vendas .forte-drawer.is-open{transform:none}
+.forte-home{text-transform:none}
+
+/* Os diálogos administrativos mantêm sua própria superfície dentro do menu. */
+.forte-vendas .drawer-system-actions :is(.fa-admin-panel,.forte-notification-panel){color:#172b45;text-transform:none}
+.forte-vendas .drawer-system-actions :is(.fa-admin-panel,.forte-notification-panel) button{background:#1455a3!important;color:#fff!important}

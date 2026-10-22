@@ -827,6 +827,7 @@ export default function App() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const workflowBusy = useRef(false);
   const [workflowInitialTab,setWorkflowInitialTab]=useState("fornecedor");
+  const [counterInitialMode,setCounterInitialMode]=useState("VENDA");
   useEffect(() => {let active=true;if(!supabaseConfigured)return;loadCloudState().then(remote=>{if(!active)return;cloudReady.current=true;if(remote){const funcionarios=[...(remote.funcionarios||[])];for(const oficial of seed.funcionarios||[])if(!funcionarios.some(x=>x.id===oficial.id||String(x.cpf||"").replace(/\D/g,"")===oficial.cpf))funcionarios.push(oficial);setData(applyAuthUser({...remote,settings:{...seed.settings,...(remote.settings||{})},funcionarios,unidadesFiscaisHistoricas:remote.unidadesFiscaisHistoricas||seed.unidadesFiscaisHistoricas}))}else saveCloudState(data).catch(e=>console.error("FALHA AO ENVIAR BASE INICIAL AO SUPABASE",e))}).catch(e=>console.error("FALHA AO CARREGAR BASE SUPABASE",e));return()=>{active=false}},[]);
   useEffect(() => {saveData(data);if(!supabaseConfigured||!cloudReady.current||workflowBusy.current)return;clearTimeout(cloudTimer.current);cloudTimer.current=setTimeout(()=>saveCloudState(data).catch(e=>console.error("FALHA AO SALVAR BASE SUPABASE",e)),800);return()=>clearTimeout(cloudTimer.current)}, [data]);
   async function commitCounterSale(buildNext) {
@@ -2202,6 +2203,8 @@ export default function App() {
           <small>Gestão de Cargas e Vendas</small>
         </div>
         <WorkspaceMenu navigation={navigation} screen={tab} group={tab.startsWith("group:")?tab.slice(6):groupForTab(tab)} onNavigate={setTab}/>
+        <section className="drawer-system-actions" aria-label="Configurações e acesso" onClick={event=>event.stopPropagation()}><div data-forte-top-actions aria-label="Ações do sistema" /></section>
+        <div className="userSessionBox"><span>{currentUser?.nome}</span>{supabaseConfigured && <button className="dangerBtn sessionExit" onClick={()=>supabase?.auth.signOut()}>SAIR</button>}</div>
         <div className="sideVersion">
           <small>VERSÃO</small>
           <b>V6.9.0</b>
@@ -2212,9 +2215,6 @@ export default function App() {
       <main className="main">
         {cloudError&&<div role="alert" className="workspace-cloud-error"><b>Gravação pendente</b><p>{cloudError}</p></div>}
         <header className="header dashboardHeader forte-header"><MenuButton drawer={drawer}/><Brand label="FORTE VENDAS"/>
-          <div>
-
-          </div>
           <div className="globalSearchWrap">
             <input
               className="headerSearchInput"
@@ -2224,7 +2224,8 @@ export default function App() {
                 if (e.key === "Enter" && globalResults[0])
                   openGlobalResult(globalResults[0]);
               }}
-              placeholder="🔎 Buscar cliente, venda, carga, produto, motorista, destino..."
+              aria-label="Buscar cliente, venda, carga, produto ou motorista"
+              placeholder="Buscar cliente, venda, carga…"
             />
             {globalSearch && (
               <div className="globalSearchResults">
@@ -2247,14 +2248,7 @@ export default function App() {
               </div>
             )}
           </div>
-          <div className="headerActions">
-            <div data-forte-top-actions aria-label="Ações do sistema" />
-
-            <div className="userSessionBox">
-              <span className="mode">{currentUser?.nome}</span>
-              {supabaseConfigured && <button className="dangerBtn sessionExit" onClick={()=>supabase?.auth.signOut()}>SAIR</button>}
-            </div>
-          </div>
+          <div className="headerActions"><span className="mode">{currentUser?.nome}</span></div>
         </header>
         {tab !== "home" && (
           <div className="moduleBreadcrumb">
@@ -2373,10 +2367,14 @@ export default function App() {
             data={data}
             onSale={()=>{setWorkflowInitialTab("venda");setTab("comprasFornecedor");}}
             onPurchase={()=>{setWorkflowInitialTab("fornecedor");setTab("comprasFornecedor");}}
+            onBudget={()=>{setCounterInitialMode("ORCAMENTO");setTab("balcao");}}
+            onLoad={()=>setTab("planejamento")}
+            canAccess={canAccessTab}
+            unread={whatsappUnread}
             canBuy={canAccessTab("comprasFornecedor","editar")}
             navigation={navigation}
-            canSell={canAccessGroup("vendas")}
-            onNavigate={setTab}
+            canSell={canAccessGroup("vendas","editar")}
+            onNavigate={screen=>{if(screen==="balcao")setCounterInitialMode("VENDA");setTab(screen);}}
           />
         )}
         <div className="systemDate">
@@ -3111,7 +3109,7 @@ export default function App() {
         )}
         {tab === "whatsapp" && <WhatsappInbox client={supabase} onUnread={setWhatsappUnread}/>}
         {tab === "balcao" && (
-          <Balcao data={data} onChange={setData} onCommit={commitCounterSale} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
+          <Balcao initialMode={counterInitialMode} data={data} onChange={setData} onCommit={commitCounterSale} currentUser={currentUser} onOpenBoleto={() => setModal({ type: "emissorBoletos", canal: "VENDA BALCÃO" })} />
         )}
         {tab === "externas" && (
           <VendasExternas
@@ -3513,7 +3511,7 @@ function pdfTabela(title, headers, rows, file, summary = []) {
   }
   doc.save(file);
 }
-export function Balcao({ data, onChange, onCommit, currentUser, onOpenBoleto }) {
+export function Balcao({ data, onChange, onCommit, currentUser, onOpenBoleto, initialMode="VENDA" }) {
   const unidades = data.unidades || [],
     clientes = data.clientes || [],
     produtos = (data.produtos || []).filter(isResaleProduct),
@@ -3524,7 +3522,7 @@ export function Balcao({ data, onChange, onCommit, currentUser, onOpenBoleto }) 
   const [unidade, setUnidade] = useState(
     unidades?.[1]?.nome || unidades?.[0]?.nome || "",
   );
-  const [tipoAtendimento,setTipoAtendimento] = useState("VENDA");
+  const [tipoAtendimento,setTipoAtendimento] = useState(initialMode === "ORCAMENTO" ? "ORCAMENTO" : "VENDA");
   const [showConference,setShowConference] = useState(false);
   const [clienteId, setClienteId] = useState("");
   const [produtoId, setProdutoId] = useState("");
