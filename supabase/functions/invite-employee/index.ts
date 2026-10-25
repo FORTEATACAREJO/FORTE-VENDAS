@@ -26,6 +26,7 @@ Deno.serve(async (request) => {
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: profile } = await admin.from("fc_perfis").select("empresa_id,perfil,status_aprovacao,trocar_senha,must_change_password")
       .eq("user_id", user.id).eq("ativo", true).single();
+    const scope=await admin.rpc('access_module_context',{p_user:user.id,p_app:'vendas'});if(scope.error||!scope.data?.isAdmin)throw Error('ADMINISTRAÇÃO DO FORTE VENDAS OBRIGATÓRIA.');if(profile)profile.perfil=scope.data.role;
     if (!profile || profile.status_aprovacao !== "APROVADO" || profile.trocar_senha || profile.must_change_password || !["MASTER", "ADMINISTRADOR"].includes(profile.perfil)) {
       throw new Error("OPERAÇÃO EXCLUSIVA DE ADMIN OU MASTER.");
     }
