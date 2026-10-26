@@ -49,7 +49,7 @@ const server = http.createServer(async (req, res) => {
     const supplied = url.searchParams.get("hub.verify_token") || "";
     const mode = url.searchParams.get("hub.mode");
     const challenge = url.searchParams.get("hub.challenge");
-    if (expected && mode === "subscribe" && supplied.length === expected.length &&
+    if (expected && mode === "subscribe" && Buffer.byteLength(supplied) === Buffer.byteLength(expected) &&
         crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected)) && challenge !== null) {
       audit("verification_accepted");
       return reply(res, 200, challenge, "text/plain; charset=utf-8");
@@ -87,3 +87,4 @@ const server = http.createServer(async (req, res) => {
 });
 if (process.env.NODE_ENV !== "test") server.listen(port, "0.0.0.0", () => console.log("Forte WhatsApp API iniciada"));
 export { server, validSignature };
+
