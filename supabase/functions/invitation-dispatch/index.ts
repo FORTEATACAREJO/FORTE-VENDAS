@@ -1,3 +1,4 @@
+import {fixedSender} from '../_shared/whatsapp-business.mjs';
 import {DRIVER_TEMPLATE_NAME,driverTemplateCompatibility,driverInvitationPayload,chooseInvitationTemplate} from './driver-template.mjs';
 import {configureInvitationBusiness} from './configure.mjs';
 import {createClient} from 'npm:@supabase/supabase-js@2.57.4';
@@ -9,14 +10,15 @@ Deno.serve(async req=>{
  try{
   const b=await req.json(),action=b.action,jwt=req.headers.get('authorization')||'';
   const remote=async(a:string)=>{const r=await fetch(`https://${source}.supabase.co/functions/v1/access-invites`,{method:'POST',headers:{Origin:origin,Authorization:jwt,'Content-Type':'application/json'},body:JSON.stringify({app:b.app,action:a,id:b.id}),signal:AbortSignal.timeout(15000)});const q=await r.json();if(!r.ok||!q.authorized)throw Error(q.error||'Convite não autorizado.');return q;};
-  const config=ok(await db.rpc('shared_invite_business_read'))||{},token=config.token||Deno.env.get('WHATSAPP_ACCESS_TOKEN'),phone=config.phone_id||Deno.env.get('WHATSAPP_PHONE_ID')||Deno.env.get('WHATSAPP_PHONE_NUMBER_ID'),waba=config.waba_id||Deno.env.get('WHATSAPP_WABA_ID')||Deno.env.get('WHATSAPP_BUSINESS_ACCOUNT_ID'),template=config.template_name||Deno.env.get('WHATSAPP_ACCESS_INVITE_TEMPLATE'),version=Deno.env.get('WHATSAPP_GRAPH_VERSION')||'v26.0';
+  const config=ok(await db.rpc('shared_invite_business_read'))||{},token=config.token||Deno.env.get('WHATSAPP_ACCESS_TOKEN'),phone=fixedSender().phone,waba=fixedSender().waba,template=config.template_name||Deno.env.get('WHATSAPP_ACCESS_INVITE_TEMPLATE'),version=Deno.env.get('WHATSAPP_GRAPH_VERSION')||'v26.0';
   const queryTemplate=async(name:string)=>{if(!token||!waba||!name)return {status:'NOT_CONFIGURED'};try{const r=await fetch(`https://graph.facebook.com/${version}/${waba}/message_templates?name=${encodeURIComponent(name)}&fields=name,status,language,components,parameter_format`,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});const q=await r.json();if(!r.ok)return {status:'UNVERIFIED'};return q.data?.find((x:any)=>x.name===name&&x.language==='pt_BR')||{status:'NOT_FOUND'};}catch{return {status:'UNVERIFIED'};}};
   const selectTemplate=async()=>{const generic=await queryTemplate(template);if(source!=='nkynfboqwfxhhxcsrawl')return {selected:generic,driver:null,compatibility:null};const driver=await queryTemplate(DRIVER_TEMPLATE_NAME),compatibility=driverTemplateCompatibility(driver);return {selected:chooseInvitationTemplate(source,generic,driver),driver,compatibility};};
   const credentialStatus=async()=>{if(!token||!phone)return 'NOT_CONFIGURED';const r=await fetch(`https://graph.facebook.com/${version}/${phone}?fields=id`,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});const q=await r.json();return r.ok&&q.id===phone?'VALID':q.error?.code===190?'TOKEN_REJECTED':'UNVERIFIED';};
+  if(action!=='CONFIGURE')fixedSender(config.phone_id,config.waba_id);
   if(action==='CAPABILITIES'){const [credentials,choice]=await Promise.all([credentialStatus(),selectTemplate()]);return reply({business_credentials:Boolean(token&&phone),credential_status:credentials,template_configured:Boolean(choice.selected.name||template),template_status:choice.selected.status,template_name:choice.selected.name||template||null,...(choice.driver?{driver_template_status:choice.driver.status,driver_template_compatible:choice.compatibility.compatible,driver_template_reason:choice.compatibility.reason}:{})});}
   if(action==='CONFIGURE'){
    const actor=await remote('AUTHORIZE_CONFIG');
-   return reply(await configureInvitationBusiness({actor:actor.actor,token:b.token,phone:b.phone_id,waba:b.waba_id,version,persist:async values=>{ok(await db.rpc('shared_invite_business_save',values));}}));
+   return reply(await configureInvitationBusiness({actor:actor.actor,token:b.token,phone:b.phone_id,waba:b.waba_id,version,templateName:template||undefined,persist:async values=>{ok(await db.rpc('shared_invite_business_save',values));}}));
   }
   if(action!=='SEND')throw Error('Ação inválida.');const invitation=await remote('AUTHORIZE_RELAY');
   if(!token||!phone)throw Error('Credenciais do WhatsApp Business ainda não configuradas para os convites.');const choice=await selectTemplate(),selected=choice.selected;if(selected.status!=='APPROVED')throw Error('O modelo de convite ainda não foi aprovado pela Meta. Situação: '+selected.status);

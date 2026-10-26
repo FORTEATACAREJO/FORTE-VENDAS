@@ -1,7 +1,9 @@
+import {fixedSender} from '../_shared/whatsapp-business.mjs';
 export const documentTemplates={FORNECEDOR:'forte_pedido_fornecedor_pdf',ORDEM_MOTORISTA:'forte_ordem_carregamento_pdf'};
 export async function readBusiness(db,env){
  const r=await db.rpc('shared_invite_business_read');if(r.error)throw Error('Não foi possível consultar a configuração Business existente.');const c=r.data||{};
- return {token:c.token||env('WHATSAPP_ACCESS_TOKEN'),phone:c.phone_id||env('WHATSAPP_PHONE_ID')||env('WHATSAPP_PHONE_NUMBER_ID'),waba:c.waba_id||env('WHATSAPP_WABA_ID')||env('WHATSAPP_BUSINESS_ACCOUNT_ID'),version:env('WHATSAPP_GRAPH_VERSION')||'v26.0'};
+ const sender=fixedSender(c.phone_id||env('WHATSAPP_PHONE_ID')||env('WHATSAPP_PHONE_NUMBER_ID'),c.waba_id||env('WHATSAPP_WABA_ID')||env('WHATSAPP_BUSINESS_ACCOUNT_ID'));
+ return {token:c.token||env('WHATSAPP_ACCESS_TOKEN'),...sender,version:env('WHATSAPP_GRAPH_VERSION')||'v26.0'};
 }
 export function compatibleDocumentTemplate(t){
  const body=t?.components?.find(c=>c.type==='BODY'),header=t?.components?.find(c=>c.type==='HEADER');
