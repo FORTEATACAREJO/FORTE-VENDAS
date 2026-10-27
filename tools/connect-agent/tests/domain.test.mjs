@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {XMLParser,XMLValidator} from 'fast-xml-parser';
-import {fiscalRecord,saleRecord,projectRecords,MATRIX} from '../common/domain.mjs';
+import {fiscalRecord,saleRecord,projectRecords,MATRIX,pageCursor} from '../common/domain.mjs';
 const parse=x=>{assert.equal(XMLValidator.validate(x),true);return new XMLParser({ignoreAttributes:false,removeNSPrefix:true,parseTagValue:false,parseAttributeValue:false,processEntities:false}).parse(x);};
 function key(cnpj=MATRIX){const s='312610'+cnpj+'55'+'001'+'000000001'+'1'+'12345678';let total=0,w=2;for(let i=42;i>=0;i--){total+=Number(s[i])*w;w=w===9?2:w+1;}const d=11-total%11;return s+(d>=10?0:d);}
 const k=key();
@@ -16,3 +16,5 @@ test('accepted cancellation correlates even when received before invoice',()=>{c
 test('same sale id across source companies never merges',()=>{assert.notEqual(saleRecord(sale).sourceId,saleRecord({...sale,sourceCompany:'OUTRA'}).sourceId);});
 test('older snapshot cannot resurrect cancelled sale; equal-date conflicts visible',()=>{const a=db(saleRecord(sale),'a'),b=db(saleRecord({...sale,status:'CANCELADA',updatedAt:'2026-10-27T10:00:00-03:00'}),'b');assert.equal(projectRecords([b,a]).sales[0].payload.status,'CANCELADA');assert.equal(projectRecords([b,{...b,content_hash:'c'}]).sales[0].conflict,true);});
 test('sales validation rejects repeated lines, negative amounts, unknown states and missing timezone',()=>{for(const s of [{...sale,items:[sale.items[0],sale.items[0]]},{...sale,total:'-1'},{...sale,status:'OUTRO'},{...sale,updatedAt:'27/10/2026 09:00'}])assert.throws(()=>saleRecord(s));});
+
+test('pagination preserves Postgres microseconds and rejects filter injection',()=>{const stamp='2026-10-27T05:00:00.123456+00:00',id='00000000-0000-4000-8000-000000000001';assert.ok(pageCursor(stamp,id).includes('eq.'+stamp));assert.throws(()=>pageCursor(stamp+',id.gt.0',id));assert.throws(()=>fiscalRecord('<?xml version="1.0" encoding="UTF-16"?>'+xml(),parse),/UTF-8/);});

@@ -7,8 +7,13 @@ const amount=(v,positive=false)=>{const s=String(v??'');if(!/^\d{1,12}(\.\d{1,10
 export function validKey(key){if(!/^\d{44}$/.test(key))return false;let sum=0,w=2;for(let i=42;i>=0;i--){sum+=Number(key[i])*w;w=w===9?2:w+1;}const d=11-sum%11;return Number(key[43])===(d>=10?0:d);}
 function iso(value){const s=text(value,40);if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(s)||!Number.isFinite(Date.parse(s)))throw fail('Informe data/hora com fuso.');return new Date(s).toISOString();}
 function keyOf(value){const s=String(value||'');if(!validKey(s))throw fail('Chave de NF-e inválida.');return s;}
+export function pageCursor(value,id){
+ if(!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(value)||!Number.isFinite(Date.parse(value))||!/^[0-9a-f-]{36}$/.test(id||''))throw fail('Página inválida.');
+ return `received_at.lt.${value},and(received_at.eq.${value},id.lt.${id})`;
+}
 export function fiscalRecord(xml,parse){
  if(typeof xml!=='string'||new TextEncoder().encode(xml).length>350000||/<!DOCTYPE|<!ENTITY/i.test(xml))throw fail('XML fora do limite ou com declaração não permitida.');
+ const encoding=xml.match(/<\?xml[^?]*encoding\s*=\s*["']([^"']+)["']/i)?.[1];if(encoding&&!/^utf-?8$/i.test(encoding))throw fail('Exporte o XML em UTF-8 para preservar uma cópia válida.');
  let x;try{x=parse(xml);}catch{throw fail('XML malformado.');}
  const p=x.nfeProc;
  if(p){
