@@ -1,0 +1,29 @@
+name: Connect mirror checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths: ['tools/connect-agent/**', 'supabase/functions/connect-mirror/**', '.github/workflows/connect-mirror.yml']
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci --prefix tools/connect-agent
+      - run: npm test --prefix tools/connect-agent
+      - run: python -m unittest discover -s tools/connect-agent/tests -p 'test_*.py' -v
+      - name: Verify packaged desktop source
+        run: |
+          python - <<'PY'
+          from zipfile import ZipFile
+          from pathlib import Path
+          with ZipFile('public/connect-agent.zip' if Path('public/connect-agent.zip').exists() else 'apps/web/public/connect-agent.zip') as z:
+            for p in Path('tools/connect-agent/agent').iterdir():
+              if p.is_file(): assert z.read(p.name)==p.read_bytes(), p.name
+          PY
