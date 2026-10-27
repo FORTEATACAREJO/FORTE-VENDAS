@@ -1,0 +1,2 @@
+empresa;venda;atualizado_em;data_venda;situacao;cliente;total_venda;item;codigo;produto;unidade;quantidade;preco_unitario;total_item
+CONJUNTO;DEMO-001;2026-10-27T09:00:00-03:00;2026-10-27T08:00:00-03:00;CONCLUIDA;CLIENTE DE TESTE;20,00;1;DEMO;PRODUTO DE TESTE;UN;2;10,00;20,00

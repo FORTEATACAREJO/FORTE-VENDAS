@@ -1,3 +1,4 @@
+import ConnectMirror from './ConnectMirror.jsx';
 import SupplierBuyerCodes from './SupplierBuyerCodes.jsx';
 import WhatsappInbox,{inboxCall} from './WhatsappInbox.jsx';
 import {counterDraftKey,readCounterDraft,counterCancellationBlock} from './counter-draft.js';
@@ -2365,6 +2366,7 @@ export default function App() {
             );
           })()}
         <OperationContextNav screen={tab} canAccess={canAccessTab} onNavigate={setTab}/>
+        {tab === "home" && isMaster && <ConnectMirror client={supabase} mode="VENDAS"/>}
         {tab === "home" && (
           <HomeCompactV47
             data={data}
