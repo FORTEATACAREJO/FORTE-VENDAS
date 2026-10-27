@@ -1,0 +1,75 @@
+name: Publicar instaladores Connect Desktop
+on:
+  push:
+    branches: ['download/connect-desktops-20261027']
+    paths: ['tools/connect-desktop/build_packages.py', '.github/workflows/connect-desktop-downloads.yml']
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Obter instaladores oficiais e conferir o agente
+        env:
+          EXPECTED_AGENT_SHA256: 'd9153cca0722637e45c9030f506bbff0f6da6085d3258f2097da4d353c41f62b'
+        run: |
+          python - <<'PY'
+          import pathlib,urllib.request,hashlib,os
+          source=pathlib.Path('tools/connect-agent/agent/connect_agent.py').read_bytes()
+          assert hashlib.sha256(source).hexdigest()==os.environ['EXPECTED_AGENT_SHA256']
+          target=pathlib.Path('tools/connect-desktop/downloads')
+          target.mkdir(parents=True,exist_ok=True)
+          files={
+            'python-3.11.9-amd64.exe':'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe',
+            'python-3.11.9.exe':'https://www.python.org/ftp/python/3.11.9/python-3.11.9.exe',
+            'PYTHON-LICENSE.txt':'https://raw.githubusercontent.com/python/cpython/v3.11.9/LICENSE'
+          }
+          for name,url in files.items():
+            with urllib.request.urlopen(url,timeout=90) as response,(target/name).open('wb') as output:
+              while chunk:=response.read(1024*1024):output.write(chunk)
+          PY
+      - name: Montar e verificar os dois ZIPs
+        run: |
+          python tools/connect-desktop/build_packages.py
+          python - <<'PY'
+          import pathlib,zipfile,hashlib,json
+          output=pathlib.Path('tools/connect-desktop/output')
+          expected={'Desktop_Fiscal_Matriz_Com_Python.zip':'FISCAL_XML','Desktop_Vendas_Conjunto_Com_Python.zip':'VENDAS'}
+          lines=[]
+          for name,mode in expected.items():
+            file=output/name
+            with zipfile.ZipFile(file) as archive:
+              assert archive.testzip() is None
+              prefix=archive.namelist()[0].split('/')[0]+'/'
+              profile=json.loads(archive.read(prefix+'perfil-do-desktop.json'))
+              assert profile['mode']==mode and profile['autoStart'] is False
+              assert not any('__pycache__' in p for p in archive.namelist())
+              hashes=json.loads(archive.read(prefix+'Python/verificacao.json'))
+              for installer,digest in hashes.items():
+                assert hashlib.sha256(archive.read(prefix+'Python/'+installer)).hexdigest()==digest
+            lines.append(hashlib.sha256(file.read_bytes()).hexdigest()+'  '+name)
+          (output/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+          PY
+      - name: Publicar downloads sem login
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: connect-desktops-20261027-v1
+        run: |
+          cat > release-notes.txt <<'TEXT'
+          Dois pacotes independentes para Windows: Fiscal da Matriz MG e Vendas Conjunto.
+          Incluem os instaladores oficiais Python 3.11.9 de 32 e 64 bits, agente, assistente e atalhos.
+          Extraia o ZIP e execute 00_INSTALAR_NESTE_DESKTOP.cmd.
+          A instalacao prepara o computador; nao inicia envio, nao inclui credenciais e nao altera o Connect.
+          A vinculacao com o Master e a escolha das pastas acontecem depois.
+          Para Vendas, o formato real do CSV ainda precisa ser conferido.
+          TEXT
+          gh release create "$RELEASE_TAG" tools/connect-desktop/output/*.zip tools/connect-desktop/output/SHA256SUMS.txt --draft --target "$GITHUB_SHA" --title "Instaladores Connect Desktop - Fiscal Matriz e Vendas Conjunto" --notes-file release-notes.txt --latest=false
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false
