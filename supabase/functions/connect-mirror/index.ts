@@ -1,6 +1,6 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {XMLParser,XMLValidator} from 'npm:fast-xml-parser@5.9.3';
-import {fiscalRecord,saleRecord,fail,MATRIX} from './domain.mjs';
+import {fiscalRecord,saleRecord,fail,MATRIX,pageCursor} from './domain.mjs';
 import {MODE} from './mode.mjs';
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-connect-device, x-connect-token','Content-Type':'application/json','Cache-Control':'no-store'};
 const digest=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -62,7 +62,7 @@ Deno.serve(async(req)=>{
    const cursor=String(b.before||'');if(cursor&&!/^\d{4}-\d\d-\d\dT/.test(cursor))throw fail('Página inválida.');
    // A stable compound pagination cursor avoids dropping rows with equal timestamps.
    let q=admin.from('connect_mirror_records').select('id,source_id,entity_id,kind,occurred_at,received_at,content_hash,payload').eq('tenant_id',tenant).eq('mode',MODE).order('received_at',{ascending:false}).order('id',{ascending:false}).limit(20);
-   if(cursor){const at=Date.parse(cursor);if(!Number.isFinite(at)||!/^[0-9a-f-]{36}$/.test(b.beforeId||''))throw fail('Página inválida.');q=q.or(`received_at.lt.${new Date(at).toISOString()},and(received_at.eq.${new Date(at).toISOString()},id.lt.${b.beforeId})`);}
+   if(cursor)q=q.or(pageCursor(cursor,b.beforeId));
    const [rows,devices]=await Promise.all([q,admin.from('connect_mirror_devices').select('id,name,created_at,expires_at,revoked_at,last_seen_at').eq('tenant_id',tenant).eq('mode',MODE).order('created_at',{ascending:false}).limit(100)]);
    if(rows.error||devices.error)throw fail('Consulta indisponível.',503);return Response.json({mode:MODE,records:rows.data,devices:devices.data,hasMore:rows.data.length===20,mirrorOnly:true},{headers:cors});
   }
